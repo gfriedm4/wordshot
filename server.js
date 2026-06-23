@@ -388,12 +388,48 @@ async function vetNickname(nickname, playerId) {
   if (!nickname) return { ok: false, error: "nickname required" };
   if (!nicknameAllowed(nickname))
     return { ok: false, error: "that nickname isn't allowed — pick another" };
-  const mod = await moderateNickname(nickname);
-  if (!mod.allowed)
-    return { ok: false, error: "that nickname isn't allowed — pick another" };
+  // Skip the LLM for a name this player already holds — it was vetted when set
+  // (or generated from the approved word list), so re-checking it on every
+  // score submit is wasted cost.
+  const alreadyMine = nickClaims[nickname.toLowerCase()] === playerId;
+  if (!alreadyMine) {
+    const mod = await moderateNickname(nickname);
+    if (!mod.allowed)
+      return { ok: false, error: "that nickname isn't allowed — pick another" };
+  }
   if (!claimNickname(nickname, playerId))
     return { ok: false, error: "that nickname's taken — pick another" };
   return { ok: true };
+}
+
+// --- Starter nicknames: random approved adjective + noun. The word lists are
+// curated clean, so generated names skip the LLM (only uniqueness is checked).
+const NICK_ADJ = [
+  "swift", "brave", "calm", "bold", "jolly", "keen", "lucky", "mellow", "nimble",
+  "plucky", "quirky", "snappy", "sunny", "witty", "zesty", "breezy", "cosmic",
+  "fuzzy", "giddy", "peppy", "spry", "merry", "clever", "dapper", "gentle",
+  "noble", "rapid", "sleek", "vivid", "wild",
+];
+const NICK_NOUN = [
+  "otter", "koala", "panda", "finch", "gecko", "heron", "lynx", "narwhal",
+  "falcon", "badger", "comet", "pixel", "pebble", "maple", "cactus", "mango",
+  "walnut", "pretzel", "noodle", "waffle", "puffin", "marmot", "willow",
+  "ember", "meadow", "cobalt", "quartz", "robin", "tiger", "raven",
+];
+const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
+
+// Generate a unique starter name and claim it for the player. Tries adj-noun,
+// then adds a number to break ties, so it always returns something available.
+function suggestNickname(playerId) {
+  for (let i = 0; i < 30; i++) {
+    const name = `${pick(NICK_ADJ)}-${pick(NICK_NOUN)}`;
+    if (!nickClaims[name.toLowerCase()] && claimNickname(name, playerId)) return name;
+  }
+  for (let i = 0; i < 100; i++) {
+    const name = `${pick(NICK_ADJ)}-${pick(NICK_NOUN)}${Math.floor(Math.random() * 100)}`;
+    if (!nickClaims[name.toLowerCase()] && claimNickname(name, playerId)) return name;
+  }
+  return `player-${Math.floor(Math.random() * 1e6)}`;
 }
 
 const ENGINE_INSTRUCTION = `You are a rendering engine that turns a short description into a flat SVG illustration. Rules:
@@ -505,6 +541,13 @@ app.post("/api/generate", async (req, res) => {
         .json({ error: "that prompt isn't allowed, try describing the picture" });
     res.status(502).json({ error: msg });
   }
+});
+
+// A starter nickname for new players: unique, approved, claimed for this player.
+app.get("/api/nickname/suggest", (req, res) => {
+  const playerId = String(req.query.playerId || "");
+  if (!playerId) return res.status(400).json({ error: "playerId required" });
+  res.json({ nickname: suggestNickname(playerId) });
 });
 
 // Read a day's two boards. ?me=<playerId> flags the caller's own rows.

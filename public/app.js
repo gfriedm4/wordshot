@@ -358,7 +358,6 @@ async function init() {
     if ((e.metaKey || e.ctrlKey) && e.key === "Enter") paint();
   });
 
-  $("whoName").textContent = getNick() || "guest";
   $("changeNick").addEventListener("click", (e) => {
     e.preventDefault();
     showNickModal();
@@ -368,8 +367,19 @@ async function init() {
     if (e.key === "Enter") saveNickFromModal();
   });
 
+  // New players get an auto-assigned starter name (no forced modal). They can
+  // change it anytime via the header link.
+  if (!getNick()) {
+    try {
+      const r = await fetch(`/api/nickname/suggest?playerId=${encodeURIComponent(getPlayerId())}`);
+      if (r.ok) setNick((await r.json()).nickname);
+    } catch {
+      /* offline — leave unnamed, the modal still works via "change" */
+    }
+  }
+  $("whoName").textContent = getNick() || "guest";
+
   if (days.length) await loadDay(days[0].date); // today first
-  if (!getNick()) showNickModal();
 }
 
 init();
