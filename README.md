@@ -23,11 +23,12 @@ exactly the variable the game is about.
 ```bash
 npm install
 cp .env.example .env   # then paste your Gemini key into .env
-export $(grep -v '^#' .env | xargs)   # or use a dotenv loader / your shell
 npm start              # http://localhost:3000
 ```
 
-You need a `GEMINI_API_KEY` (free tier works fine for this). Without it the
+The server reads `.env` from the project root on startup, so pasting the key
+into `.env` is all you need. Get a `GEMINI_API_KEY` at
+https://aistudio.google.com/apikey (free tier works fine). Without it the
 engine returns 503 and the rest of the UI still loads.
 
 ## How it works

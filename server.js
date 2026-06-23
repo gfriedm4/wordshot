@@ -1,9 +1,21 @@
 import express from "express";
 import { readFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
+
+// Load .env from the project root so `npm start` works without exporting vars.
+const envPath = join(__dirname, ".env");
+if (existsSync(envPath)) {
+  try {
+    process.loadEnvFile(envPath);
+  } catch (e) {
+    console.warn(`couldn't read .env: ${e.message}`);
+  }
+}
+
 const PORT = process.env.PORT || 3000;
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-2.5-flash";
