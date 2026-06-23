@@ -1,0 +1,32 @@
+# Turnkey self-host: the app + Caddy (automatic HTTPS) on one box.
+#   1. point wordshot.art's A record at this server's public IP
+#   2. put GEMINI_API_KEY in a .env file next to this compose file
+#   3. docker compose up -d --build
+services:
+  wordshot:
+    build: .
+    restart: unless-stopped
+    environment:
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+    volumes:
+      - wordshot-data:/app/data
+    expose:
+      - "3000"
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      - wordshot
+
+volumes:
+  wordshot-data:
+  caddy-data:
+  caddy-config:

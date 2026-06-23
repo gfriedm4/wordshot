@@ -1,0 +1,9 @@
+# Caddy fetches and renews a Let's Encrypt cert for these names automatically.
+# www redirects to the apex.
+wordshot.art {
+	reverse_proxy wordshot:3000
+}
+
+www.wordshot.art {
+	redir https://wordshot.art{uri}
+}
