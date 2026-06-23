@@ -64,23 +64,35 @@ model): once you submit, your attempt is saved and the input locks, and it stays
 locked across reloads. It's clearable in devtools, so honest players get one try
 and that's the level of enforcement an anonymous game can honestly claim.
 
-## Nickname + leaderboard
+## Nickname + leaderboards
 
-There's no login. You pick a nickname (stored in `localStorage`) and it labels
-your row on a per-puzzle leaderboard. The board ranks by match first, character
-count as the tiebreaker, top 10.
+There's no login. You pick a nickname and it labels your rows. Identity is a
+stable `playerId` (a random id kept in `localStorage`); the nickname is just a
+display label on top of it. That split is what lets a rename work: change your
+name and `/api/player/rename` relabels all of your existing rows, because they're
+keyed by `playerId`, not by the name.
 
-The score on the board is trustworthy even though there's no auth. The client
-never sends a score: when `/api/generate` measures your painting it issues a
-one-time token bound to that server-computed score, and `/api/leaderboard/submit`
-exchanges `{token, nickname}` for a row. So a player can pick any nickname, but
-the number beside it is one the server actually measured, and the token can't be
-replayed or forged. Best score per nickname per puzzle wins; resubmitting only
-improves your own row. The board persists to `data/leaderboard.json` (gitignored).
+Two boards per puzzle, top 10 each:
+
+- *Best match* — ranked by match %, character count as the tiebreaker.
+- *Shortest prompt* — ranked by fewest characters, but only counting attempts
+  that cleared an accuracy floor (`BREVITY_FLOOR`, currently 80%). Without the
+  floor, "fewest characters" is won by whoever types one junk character, so the
+  board has to mean "shortest prompt that still got the picture right."
+
+The score is trustworthy even without auth. The client never sends a score: when
+`/api/generate` measures your painting it issues a one-time token bound to that
+server-computed score, and `/api/leaderboard/submit` exchanges
+`{token, nickname, playerId}` for a row. So you can pick any nickname, but the
+number beside it is one the server measured, and the token can't be replayed or
+forged. Best score per player per puzzle wins; resubmitting only improves your
+own row. Boards persist to `data/leaderboard.json` (gitignored).
 
 This is casual-grade integrity, right for the stakes. The nickname is claimable
-(two people can both be "greg"), which is the thing real accounts would fix once
-there's something worth protecting.
+(two people can both be "greg" — they're separate rows by `playerId`), and the
+`playerId` is a bearer token in localStorage, so clearing storage loses your
+rows. Both are things real accounts would fix once there's something worth
+protecting.
 
 ## Status
 

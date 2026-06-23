@@ -78,8 +78,14 @@ const DATA_DIR = join(__dirname, "data");
 const LB_PATH = join(DATA_DIR, "leaderboard.json");
 const LB_TOP = 10;
 const NICK_MAX = 20;
+// The brevity board only counts attempts that cleared this match %. Without a
+// floor, "fewest characters" is won by whoever types one junk character, so it
+// has to mean "shortest prompt that still got the picture right."
+const BREVITY_FLOOR = 80;
 
-let leaderboard = {}; // { [puzzleId]: [{ nickname, score, chars, at }] }
+// playerId is the stable identity (a random id the client keeps in localStorage);
+// nickname is just a display label, so a rename can find and relabel your rows.
+let leaderboard = {}; // { [puzzleId]: [{ playerId, nickname, score, chars, at }] }
 if (existsSync(LB_PATH)) {
   try {
     leaderboard = JSON.parse(await readFile(LB_PATH, "utf8"));
@@ -113,12 +119,29 @@ function cleanNickname(raw) {
     .slice(0, NICK_MAX);
 }
 
-function topFor(puzzleId) {
-  return (leaderboard[puzzleId] || [])
+const toRow = (me) => (r) => ({
+  nickname: r.nickname,
+  score: r.score,
+  chars: r.chars,
+  mine: !!me && r.playerId === me,
+});
+
+// Two boards off the same rows: accuracy (best match) and brevity (shortest
+// prompt that cleared the floor). `me` flags the requester's own row, by
+// playerId, without leaking anyone else's id.
+function boardsFor(puzzleId, me) {
+  const rows = leaderboard[puzzleId] || [];
+  const accuracy = rows
     .slice()
     .sort((a, b) => b.score - a.score || a.chars - b.chars || a.at - b.at)
     .slice(0, LB_TOP)
-    .map(({ nickname, score, chars }) => ({ nickname, score, chars }));
+    .map(toRow(me));
+  const brevity = rows
+    .filter((r) => r.score >= BREVITY_FLOOR)
+    .sort((a, b) => a.chars - b.chars || b.score - a.score || a.at - b.at)
+    .slice(0, LB_TOP)
+    .map(toRow(me));
+  return { accuracy, brevity, floor: BREVITY_FLOOR };
 }
 
 // Strip puzzle SVG so the answer key never ships to the browser.
@@ -213,32 +236,55 @@ app.post("/api/generate", async (req, res) => {
   }
 });
 
-// Read a puzzle's top scores.
+// Read a puzzle's two boards. ?me=<playerId> flags the caller's own rows.
 app.get("/api/leaderboard/:id", (req, res) => {
-  res.json({ top: topFor(req.params.id) });
+  res.json(boardsFor(req.params.id, String(req.query.me || "")));
 });
 
-// Redeem a score token + nickname into a leaderboard row. Best score per
-// nickname per puzzle wins; resubmitting can only improve your own row.
+// Redeem a score token into a leaderboard row, keyed by playerId. Best score
+// per player per puzzle wins; resubmitting can only improve your own row.
 app.post("/api/leaderboard/submit", (req, res) => {
   const token = String(req.body?.token || "");
   const nickname = cleanNickname(req.body?.nickname);
+  const playerId = String(req.body?.playerId || "");
   if (!nickname) return res.status(400).json({ error: "nickname required" });
+  if (!playerId) return res.status(400).json({ error: "playerId required" });
   const scored = scoreTokens.get(token);
   if (!scored) return res.status(400).json({ error: "invalid or used token" });
   scoreTokens.delete(token); // one-time
 
   const { puzzleId, score, chars } = scored;
   const rows = (leaderboard[puzzleId] ||= []);
-  const mine = rows.find((r) => r.nickname === nickname);
+  const mine = rows.find((r) => r.playerId === playerId);
   const better = (s, c) => s > (mine?.score ?? -1) || (s === mine?.score && c < mine.chars);
   if (!mine) {
-    rows.push({ nickname, score, chars, at: Date.now() });
-  } else if (better(score, chars)) {
-    Object.assign(mine, { score, chars, at: Date.now() });
+    rows.push({ playerId, nickname, score, chars, at: Date.now() });
+  } else {
+    mine.nickname = nickname; // keep label fresh
+    if (better(score, chars)) Object.assign(mine, { score, chars, at: Date.now() });
   }
   persistLeaderboard();
-  res.json({ top: topFor(puzzleId) });
+  res.json(boardsFor(puzzleId, playerId));
+});
+
+// Rename: relabel all of this player's rows across every puzzle. The nickname
+// is display-only; playerId is the identity, so this is just a label swap.
+app.post("/api/player/rename", (req, res) => {
+  const playerId = String(req.body?.playerId || "");
+  const nickname = cleanNickname(req.body?.nickname);
+  if (!playerId) return res.status(400).json({ error: "playerId required" });
+  if (!nickname) return res.status(400).json({ error: "nickname required" });
+  let changed = 0;
+  for (const rows of Object.values(leaderboard)) {
+    for (const r of rows) {
+      if (r.playerId === playerId) {
+        r.nickname = nickname;
+        changed++;
+      }
+    }
+  }
+  if (changed) persistLeaderboard();
+  res.json({ ok: true, changed });
 });
 
 app.listen(PORT, () => {

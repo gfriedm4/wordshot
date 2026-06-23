@@ -42,9 +42,16 @@
 
     <div class="result" id="result"></div>
 
-    <div class="leaderboard">
-      <div class="lb-head">Leaderboard <span class="sub" id="lbPuzzle"></span></div>
-      <ol id="lbList" class="lb-list"><li class="lb-empty">No scores yet. Be first.</li></ol>
+    <div class="lb-title">Leaderboard <span class="sub" id="lbPuzzle"></span></div>
+    <div class="boards lb-grid">
+      <div class="leaderboard">
+        <div class="lb-head">Best match</div>
+        <ol id="lbAccuracy" class="lb-list"><li class="lb-empty">No scores yet. Be first.</li></ol>
+      </div>
+      <div class="leaderboard">
+        <div class="lb-head">Shortest prompt <span class="sub" id="lbFloor"></span></div>
+        <ol id="lbBrevity" class="lb-list"><li class="lb-empty">No qualifying scores yet.</li></ol>
+      </div>
     </div>
 
     <p class="hint">

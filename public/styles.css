@@ -57,7 +57,10 @@ button.primary:disabled { opacity: 0.5; cursor: default; }
 .who a { color: #8a7d57; text-decoration: none; margin-left: 4px; }
 .who a:hover { text-decoration: underline; }
 
-.leaderboard { margin-top: 22px; background: #fff; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+.lb-title { margin-top: 24px; font-size: 15px; font-weight: 600; }
+.lb-title .sub { font-weight: 400; }
+.lb-grid { margin-top: 10px; }
+.leaderboard { background: #fff; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
 .lb-head { font-size: 13px; font-weight: 600; padding: 10px 14px; border-bottom: 1px solid var(--line); }
 .lb-head .sub { font-weight: 400; }
 .lb-list { list-style: none; margin: 0; padding: 0; }

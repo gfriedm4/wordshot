@@ -7,8 +7,17 @@ const rctx = resultCanvas.getContext("2d");
 
 let currentPuzzle = null;
 
-// --- Nickname (casual identity, localStorage, no login) ---
+// --- Identity: a stable playerId (the real key) + a display nickname ---
+const PID_KEY = "dp:pid";
 const NICK_KEY = "dp:nick";
+function getPlayerId() {
+  let id = localStorage.getItem(PID_KEY);
+  if (!id) {
+    id = (crypto.randomUUID && crypto.randomUUID()) || String(Math.random()).slice(2);
+    localStorage.setItem(PID_KEY, id);
+  }
+  return id;
+}
 const getNick = () => localStorage.getItem(NICK_KEY) || "";
 const setNick = (n) => localStorage.setItem(NICK_KEY, n);
 
@@ -17,15 +26,29 @@ function showNickModal() {
   $("nickModal").classList.add("show");
   $("nickInput").focus();
 }
-function saveNickFromModal() {
+async function saveNickFromModal() {
   const n = $("nickInput").value.trim().slice(0, 20);
   if (!n) return;
+  const prev = getNick();
   setNick(n);
   $("whoName").textContent = n;
   $("nickModal").classList.remove("show");
+  // If the name actually changed, relabel my existing rows server-side.
+  if (prev && prev !== n) {
+    try {
+      await fetch("/api/player/rename", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ playerId: getPlayerId(), nickname: n }),
+      });
+    } catch {
+      /* non-fatal */
+    }
+  }
+  if (currentPuzzle) loadLeaderboard(currentPuzzle);
 }
 
-// --- One-shot gate: one attempt per puzzle, saved locally, locks the input ---
+// --- One-shot gate ---
 const saveKey = (id) => `dp:v1:${id}`;
 const getAttempt = (id) => {
   try {
@@ -81,18 +104,16 @@ async function showResult(svg, score, chars, name) {
     <div class="share">Daily Puzzle — ${name}\n${starsFor(score)}  ${p}%  ·  ${chars} chars</div>`;
 }
 
-function renderLeaderboard(top) {
-  const me = getNick();
-  const list = $("lbList");
-  if (!top || !top.length) {
-    list.innerHTML = `<li class="lb-empty">No scores yet. Be first.</li>`;
+function renderBoard(elId, rows, emptyMsg) {
+  const list = $(elId);
+  if (!rows || !rows.length) {
+    list.innerHTML = `<li class="lb-empty">${emptyMsg}</li>`;
     return;
   }
-  list.innerHTML = top
+  list.innerHTML = rows
     .map((r, i) => {
-      const mine = r.nickname === me ? " me" : "";
       const nick = r.nickname.replace(/[<>&]/g, "");
-      return `<li class="${mine.trim()}">
+      return `<li class="${r.mine ? "me" : ""}">
         <span class="rank">${i + 1}</span>
         <span class="nick">${nick}</span>
         <span class="pct">${r.score.toFixed(1)}%</span>
@@ -104,8 +125,12 @@ function renderLeaderboard(top) {
 
 async function loadLeaderboard(id) {
   try {
-    const { top } = await (await fetch(`/api/leaderboard/${id}`)).json();
-    renderLeaderboard(top);
+    const data = await (
+      await fetch(`/api/leaderboard/${id}?me=${encodeURIComponent(getPlayerId())}`)
+    ).json();
+    $("lbFloor").textContent = `· ≥${data.floor}% to qualify`;
+    renderBoard("lbAccuracy", data.accuracy, "No scores yet. Be first.");
+    renderBoard("lbBrevity", data.brevity, "No qualifying scores yet.");
   } catch {
     /* leave whatever's there */
   }
@@ -164,14 +189,23 @@ async function paint() {
     setLocked(true, "You've already played this one.");
     await showResult(data.svg, data.score, data.chars, name);
 
-    // Hand the server-issued token back with our nickname to claim a row.
+    // Trade the server-issued token for a board row.
     if (data.token) {
       const r = await fetch("/api/leaderboard/submit", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token: data.token, nickname: getNick() }),
+        body: JSON.stringify({
+          token: data.token,
+          nickname: getNick(),
+          playerId: getPlayerId(),
+        }),
       });
-      if (r.ok) renderLeaderboard((await r.json()).top);
+      if (r.ok) {
+        const d = await r.json();
+        $("lbFloor").textContent = `· ≥${d.floor}% to qualify`;
+        renderBoard("lbAccuracy", d.accuracy, "No scores yet. Be first.");
+        renderBoard("lbBrevity", d.brevity, "No qualifying scores yet.");
+      }
     }
   } catch (e) {
     $("result").innerHTML = `<span class="err">${e.message}</span>`;
@@ -180,6 +214,7 @@ async function paint() {
 }
 
 async function init() {
+  getPlayerId(); // ensure one exists
   const list = await (await fetch("/api/puzzles")).json();
   const sel = $("puzzle");
   sel.innerHTML = list
