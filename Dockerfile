@@ -10,6 +10,10 @@ RUN npm ci --omit=dev
 
 COPY . .
 
+# Minify the hand-written client JS in place (source stays readable in git).
+# npx fetches esbuild at build time; nothing is added to the runtime deps.
+RUN npx -y esbuild public/app.js --minify --allow-overwrite --outfile=public/app.js
+
 ENV NODE_ENV=production
 ENV PORT=3000
 EXPOSE 3000

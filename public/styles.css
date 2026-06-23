@@ -1,3 +1,20 @@
+/* Self-hosted latin subsets (variable fonts). font-display: optional keeps CLS at 0
+   by skipping the late swap; the <link rel=preload> in the head gets them in early. */
+@font-face {
+  font-family: "Inter";
+  font-style: normal;
+  font-weight: 400 600;
+  font-display: optional;
+  src: url("/fonts/inter-latin.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Space Grotesk";
+  font-style: normal;
+  font-weight: 500 700;
+  font-display: optional;
+  src: url("/fonts/space-grotesk-latin.woff2") format("woff2");
+}
+
 :root {
   --paper: #e8e4d8;       /* page behind the card */
   --card: #fbf9f4;        /* app surface */
