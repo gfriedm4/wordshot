@@ -4,27 +4,39 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Daily Puzzle — describe the picture</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="/styles.css" />
 </head>
 <body>
   <div class="wrap">
     <header>
-      <h1>Daily Puzzle <span class="sub">prototype</span></h1>
+      <div class="brand">
+        <span class="logo" aria-hidden="true"><span class="logo-dot"></span></span>
+        <div class="brand-text">
+          <h1>Daily&nbsp;Puzzle</h1>
+          <div class="brand-sub">say it in the fewest words</div>
+        </div>
+      </div>
       <div class="who">Playing as <b id="whoName">…</b> <a href="#" id="changeNick">change</a></div>
     </header>
+
     <p class="tagline">
-      On the left is the target. Describe it in words, the engine paints what you say, and you're scored on how close it lands. You get one shot, so make every word count.
+      On the left is the target. Describe it, the engine paints what you say, and you're scored on how close it lands. One shot, so make every word count.
     </p>
 
     <div class="boards">
       <div class="board">
         <div class="label"><span>Target</span><span id="targetName"></span></div>
-        <canvas id="targetCanvas" width="512" height="512"></canvas>
+        <div class="canvas-wrap"><canvas id="targetCanvas" width="512" height="512"></canvas></div>
       </div>
       <div class="board">
         <div class="label"><span>Your painting</span><span id="resultTag"></span></div>
-        <div class="ph" id="resultPh">your result shows up here</div>
-        <canvas id="resultCanvas" width="512" height="512" style="display:none"></canvas>
+        <div class="canvas-wrap">
+          <div class="ph" id="resultPh">your painting appears here</div>
+          <canvas id="resultCanvas" width="512" height="512" style="display:none"></canvas>
+        </div>
       </div>
     </div>
 
@@ -49,11 +61,11 @@
     </div>
     <div class="boards lb-grid" id="lbGrid">
       <div class="leaderboard">
-        <div class="lb-head">Best match</div>
+        <div class="lb-head"><span class="lb-icon acc">◎</span> Best match</div>
         <ol id="lbAccuracy" class="lb-list"><li class="lb-empty">No scores yet. Be first.</li></ol>
       </div>
       <div class="leaderboard">
-        <div class="lb-head">Shortest prompt <span class="sub" id="lbFloor"></span></div>
+        <div class="lb-head"><span class="lb-icon brev">✂</span> Shortest prompt <span class="sub" id="lbFloor"></span></div>
         <ol id="lbBrevity" class="lb-list"><li class="lb-empty">No qualifying scores yet.</li></ol>
       </div>
     </div>
@@ -65,8 +77,9 @@
 
   <div class="modal" id="nickModal">
     <div class="card">
+      <span class="logo big" aria-hidden="true"><span class="logo-dot"></span></span>
       <h2>Pick a nickname</h2>
-      <p>It shows up on the leaderboard. No login.</p>
+      <p>It shows up on the leaderboard. No login, no email.</p>
       <input id="nickInput" maxlength="20" placeholder="e.g. triangle_wizard" />
       <button id="nickSave" class="primary">Start playing</button>
     </div>

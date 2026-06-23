@@ -104,14 +104,30 @@ async function showResult(svg, score, chars, name) {
   $("resultTag").textContent = `${chars} chars`;
   const p = score.toFixed(1);
   lastResult = { score, chars, name };
+  const filled = starCount(score);
+  const squares = Array.from({ length: 5 }, (_, i) => `<i class="${i < filled ? "on" : ""}"></i>`).join("");
   $("result").innerHTML = `
     <div class="score">
-      <span class="big">${p}%</span>
-      <span class="meta">match · ${chars} chars</span>
+      <span class="big" id="scoreNum">0.0%</span>
+      <span class="meta">match · <b>${chars}</b> chars</span>
+      <span class="squares">${squares}</span>
     </div>
     <div class="share">Daily Puzzle — ${name}\n${starsFor(score)}  ${p}%  ·  ${chars} chars</div>
     <button id="shareBtn">Share image</button>`;
   $("shareBtn").addEventListener("click", shareCard);
+  countUp($("scoreNum"), score);
+}
+
+// Animate the score number from 0 to its value for a little reveal.
+function countUp(el, target) {
+  const dur = 650, start = performance.now();
+  const tick = (now) => {
+    const t = Math.min(1, (now - start) / dur);
+    const eased = 1 - Math.pow(1 - t, 3);
+    el.textContent = `${(target * eased).toFixed(1)}%`;
+    if (t < 1) requestAnimationFrame(tick);
+  };
+  requestAnimationFrame(tick);
 }
 
 // Compose a result card (target + painting + score) and either invoke the native
@@ -121,42 +137,65 @@ function buildShareCard() {
   const c = document.createElement("canvas");
   c.width = W; c.height = H;
   const x = c.getContext("2d");
-  x.fillStyle = "#faf7f2"; x.fillRect(0, 0, W, H);
+  // Background: subtle dark gradient to match the app shell.
+  const bgGrad = x.createLinearGradient(0, 0, W, H);
+  bgGrad.addColorStop(0, "#141633");
+  bgGrad.addColorStop(1, "#2a1f54");
+  x.fillStyle = bgGrad; x.fillRect(0, 0, W, H);
 
-  x.fillStyle = "#1a1a1a"; x.font = "bold 44px system-ui, sans-serif";
-  x.fillText("Daily Puzzle", pad, 80);
+  // Logo mark
+  roundRect(x, pad, 36, 46, 46, 14);
+  const lg = x.createLinearGradient(pad, 36, pad + 46, 82);
+  lg.addColorStop(0, "#6d5efc"); lg.addColorStop(1, "#9b7bff");
+  x.fillStyle = lg; x.fill();
+  x.fillStyle = "#ff5d73"; x.beginPath(); x.arc(pad + 23, 59, 9, 0, 7); x.fill();
+
+  x.fillStyle = "#ffffff"; x.font = "700 40px 'Space Grotesk', system-ui, sans-serif";
+  x.fillText("Daily Puzzle", pad + 62, 70);
   const when = current?.today ? "Today" : current?.date || "";
-  x.fillStyle = "#888"; x.font = "26px system-ui, sans-serif";
-  x.fillText(`${when} · ${lastResult.name}`, pad, 122);
+  x.fillStyle = "#a39ed1"; x.font = "24px Inter, system-ui, sans-serif";
+  x.fillText(`${when} · ${lastResult.name}`, pad, 128);
 
   const panel = (cv, px, label) => {
-    x.fillStyle = "#888"; x.font = "20px system-ui, sans-serif";
-    x.fillText(label, px, top - 14);
-    x.fillStyle = "#fff"; x.fillRect(px, top, S, S);
-    x.drawImage(cv, px, top, S, S);
-    x.strokeStyle = "#e8e3d8"; x.lineWidth = 2; x.strokeRect(px, top, S, S);
+    x.fillStyle = "#a39ed1"; x.font = "600 19px Inter, system-ui, sans-serif";
+    x.fillText(label.toUpperCase(), px, top - 14);
+    x.fillStyle = "#fff"; roundRect(x, px, top, S, S, 18); x.fill();
+    x.save(); roundRect(x, px, top, S, S, 18); x.clip();
+    x.drawImage(cv, px, top, S, S); x.restore();
   };
   panel(targetCanvas, pad, "Target");
   panel(resultCanvas, pad + S + 36, "Your painting");
 
-  const rx = pad + 2 * S + 36 + 56;
-  x.fillStyle = "#1a1a1a"; x.font = "bold 110px system-ui, sans-serif";
-  x.fillText(`${lastResult.score.toFixed(1)}%`, rx, top + 110);
-  x.fillStyle = "#555"; x.font = "30px system-ui, sans-serif";
-  x.fillText("match", rx, top + 150);
-  x.font = "34px system-ui, sans-serif"; x.fillStyle = "#1a1a1a";
-  x.fillText(`${lastResult.chars} chars`, rx, top + 210);
+  const rx = pad + 2 * S + 36 + 52;
+  const sg = x.createLinearGradient(rx, top, rx + 220, top + 110);
+  sg.addColorStop(0, "#8b76ff"); sg.addColorStop(1, "#ff5d73");
+  x.fillStyle = sg; x.font = "700 104px 'Space Grotesk', system-ui, sans-serif";
+  x.fillText(`${lastResult.score.toFixed(1)}%`, rx, top + 96);
+  x.fillStyle = "#a39ed1"; x.font = "28px Inter, system-ui, sans-serif";
+  x.fillText("match", rx, top + 136);
+  x.fillStyle = "#ffffff"; x.font = "600 32px 'Space Grotesk', system-ui, sans-serif";
+  x.fillText(`${lastResult.chars} chars`, rx, top + 196);
   // Draw the 5 score squares directly (no emoji font dependency on the card).
   const filled = starCount(lastResult.score);
-  const sq = 38, gap = 10, sy = top + 240;
+  const sq = 38, gap = 10, sy = top + 226;
   for (let i = 0; i < 5; i++) {
-    x.fillStyle = i < filled ? "#3bb273" : "#e3ddd0";
-    x.fillRect(rx + i * (sq + gap), sy, sq, sq);
+    x.fillStyle = i < filled ? "#3bbf7a" : "#3a3566";
+    roundRect(x, rx + i * (sq + gap), sy, sq, sq, 8); x.fill();
   }
-  x.fillStyle = "#888"; x.font = "26px system-ui, sans-serif";
-  x.fillText(`as ${getNick() || "guest"}`, rx, top + 322);
+  x.fillStyle = "#a39ed1"; x.font = "24px Inter, system-ui, sans-serif";
+  x.fillText(`as ${getNick() || "guest"}`, rx, top + 312);
 
   return c;
+}
+
+function roundRect(x, rx, ry, w, h, r) {
+  x.beginPath();
+  x.moveTo(rx + r, ry);
+  x.arcTo(rx + w, ry, rx + w, ry + h, r);
+  x.arcTo(rx + w, ry + h, rx, ry + h, r);
+  x.arcTo(rx, ry + h, rx, ry, r);
+  x.arcTo(rx, ry, rx + w, ry, r);
+  x.closePath();
 }
 
 async function shareCard() {
@@ -191,7 +230,8 @@ function renderBoard(elId, rows, emptyMsg) {
   list.innerHTML = rows
     .map((r, i) => {
       const nick = r.nickname.replace(/[<>&]/g, "");
-      return `<li class="${r.mine ? "me" : ""}">
+      const cls = [r.mine ? "me" : "", i < 3 ? `rank-${i + 1}` : ""].filter(Boolean).join(" ");
+      return `<li class="${cls}">
         <span class="rank">${i + 1}</span>
         <span class="nick">${nick}</span>
         <span class="pct">${r.score.toFixed(1)}%</span>
