@@ -185,6 +185,54 @@ app.get("/api/target/:id", (req, res) => {
   res.type("image/svg+xml").send(p.svg);
 });
 
+// Strictest Gemini safety thresholds, shared by the moderation pass and the
+// render call. BLOCK_LOW_AND_ABOVE is the most aggressive setting the API takes.
+const SAFETY_SETTINGS = [
+  "HARM_CATEGORY_HARASSMENT",
+  "HARM_CATEGORY_HATE_SPEECH",
+  "HARM_CATEGORY_SEXUALLY_EXPLICIT",
+  "HARM_CATEGORY_DANGEROUS_CONTENT",
+].map((category) => ({ category, threshold: "BLOCK_LOW_AND_ABOVE" }));
+
+const MODERATION_INSTRUCTION = `You screen prompts for a family-friendly drawing game where players describe simple flat shapes to recreate a target picture. Reject a prompt only if it describes sexual content, graphic violence or gore, hateful or harassing content, or anything clearly inappropriate for a general audience. Harmless but off-topic prompts are fine. Reply with exactly one word: ALLOW or BLOCK.`;
+
+// Quick classification pass on the player's prompt before we spend a render on
+// it. The render call carries the same SAFETY_SETTINGS as a hard backstop, so on
+// a transient moderator error we fail open and let the engine's filter catch it.
+async function moderatePrompt(prompt) {
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_API_KEY}`;
+  const body = {
+    systemInstruction: { parts: [{ text: MODERATION_INSTRUCTION }] },
+    contents: [{ role: "user", parts: [{ text: prompt }] }],
+    generationConfig: {
+      temperature: 0,
+      maxOutputTokens: 8,
+      thinkingConfig: { thinkingBudget: 0 },
+    },
+    safetySettings: SAFETY_SETTINGS,
+  };
+  let data;
+  try {
+    const r = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    if (!r.ok) return { allowed: true }; // fail open; render-call filter backstops
+    data = await r.json();
+  } catch {
+    return { allowed: true };
+  }
+  // If the moderation call itself got safety-blocked, that's a strong BLOCK.
+  if (data?.promptFeedback?.blockReason) return { allowed: false };
+  const verdict = (data?.candidates?.[0]?.content?.parts || [])
+    .map((p) => p.text || "")
+    .join("")
+    .trim()
+    .toUpperCase();
+  return { allowed: !verdict.startsWith("BLOCK") };
+}
+
 const ENGINE_INSTRUCTION = `You are a rendering engine that turns a short description into a flat SVG illustration. Rules:
 - Output ONLY raw SVG. No markdown, no code fences, no commentary.
 - Root element: <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">.
@@ -205,6 +253,7 @@ async function generateSvg(prompt) {
       // reasoning, returning empty text. We want the SVG, not the deliberation.
       thinkingConfig: { thinkingBudget: 0 },
     },
+    safetySettings: SAFETY_SETTINGS,
   };
   const r = await fetch(url, {
     method: "POST",
@@ -216,6 +265,13 @@ async function generateSvg(prompt) {
     throw new Error(`engine ${r.status}: ${detail.slice(0, 300)}`);
   }
   const data = await r.json();
+  // Safety filter tripped: no candidate, or the one candidate stopped on SAFETY.
+  if (
+    data?.promptFeedback?.blockReason ||
+    data?.candidates?.[0]?.finishReason === "SAFETY"
+  ) {
+    throw new Error("BLOCKED: prompt rejected by the content filter");
+  }
   const text =
     data?.candidates?.[0]?.content?.parts?.map((p) => p.text).join("") || "";
   return sanitizeSvg(text);
@@ -247,6 +303,12 @@ app.post("/api/generate", async (req, res) => {
   if (!GEMINI_API_KEY)
     return res.status(503).json({ error: "engine offline: GEMINI_API_KEY not set" });
 
+  const moderation = await moderatePrompt(prompt);
+  if (!moderation.allowed)
+    return res
+      .status(400)
+      .json({ error: "that prompt isn't allowed, try describing the picture" });
+
   const eligible = date === todayStr(); // only today's day feeds the leaderboard
 
   // Mint a one-time token bound to this server-measured score + day, so the
@@ -268,7 +330,12 @@ app.post("/api/generate", async (req, res) => {
     resultCache.set(key, { svg, score });
     reply(svg, score);
   } catch (e) {
-    res.status(502).json({ error: String(e.message || e) });
+    const msg = String(e.message || e);
+    if (msg.startsWith("BLOCKED:"))
+      return res
+        .status(400)
+        .json({ error: "that prompt isn't allowed, try describing the picture" });
+    res.status(502).json({ error: msg });
   }
 });
 

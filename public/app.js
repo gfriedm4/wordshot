@@ -137,53 +137,46 @@ function buildShareCard() {
   const c = document.createElement("canvas");
   c.width = W; c.height = H;
   const x = c.getContext("2d");
-  // Background: subtle dark gradient to match the app shell.
-  const bgGrad = x.createLinearGradient(0, 0, W, H);
-  bgGrad.addColorStop(0, "#141633");
-  bgGrad.addColorStop(1, "#2a1f54");
-  x.fillStyle = bgGrad; x.fillRect(0, 0, W, H);
+  x.fillStyle = "#fbf9f4"; x.fillRect(0, 0, W, H); // warm paper
+  x.fillStyle = "#e8e4d8"; x.fillRect(0, H - 8, W, 8); // baseline strip
 
-  // Logo mark
-  roundRect(x, pad, 36, 46, 46, 14);
-  const lg = x.createLinearGradient(pad, 36, pad + 46, 82);
-  lg.addColorStop(0, "#6d5efc"); lg.addColorStop(1, "#9b7bff");
-  x.fillStyle = lg; x.fill();
-  x.fillStyle = "#ff5d73"; x.beginPath(); x.arc(pad + 23, 59, 9, 0, 7); x.fill();
+  // Logo mark: black square, vermilion dot
+  roundRect(x, pad, 34, 46, 46, 12); x.fillStyle = "#1b1a17"; x.fill();
+  x.fillStyle = "#ff5436"; x.beginPath(); x.arc(pad + 23, 57, 9, 0, 7); x.fill();
 
-  x.fillStyle = "#ffffff"; x.font = "700 40px 'Space Grotesk', system-ui, sans-serif";
-  x.fillText("Daily Puzzle", pad + 62, 70);
+  x.fillStyle = "#1b1a17"; x.font = "700 40px 'Space Grotesk', system-ui, sans-serif";
+  x.fillText("Daily Puzzle", pad + 62, 68);
   const when = current?.today ? "Today" : current?.date || "";
-  x.fillStyle = "#a39ed1"; x.font = "24px Inter, system-ui, sans-serif";
+  x.fillStyle = "#8c8678"; x.font = "24px Inter, system-ui, sans-serif";
   x.fillText(`${when} · ${lastResult.name}`, pad, 128);
 
   const panel = (cv, px, label) => {
-    x.fillStyle = "#a39ed1"; x.font = "600 19px Inter, system-ui, sans-serif";
+    x.fillStyle = "#8c8678"; x.font = "600 18px Inter, system-ui, sans-serif";
     x.fillText(label.toUpperCase(), px, top - 14);
-    x.fillStyle = "#fff"; roundRect(x, px, top, S, S, 18); x.fill();
-    x.save(); roundRect(x, px, top, S, S, 18); x.clip();
+    x.fillStyle = "#fff"; roundRect(x, px, top, S, S, 16); x.fill();
+    x.save(); roundRect(x, px, top, S, S, 16); x.clip();
     x.drawImage(cv, px, top, S, S); x.restore();
+    x.strokeStyle = "#e7e2d5"; x.lineWidth = 2; roundRect(x, px, top, S, S, 16); x.stroke();
   };
   panel(targetCanvas, pad, "Target");
   panel(resultCanvas, pad + S + 36, "Your painting");
 
   const rx = pad + 2 * S + 36 + 52;
-  const sg = x.createLinearGradient(rx, top, rx + 220, top + 110);
-  sg.addColorStop(0, "#8b76ff"); sg.addColorStop(1, "#ff5d73");
-  x.fillStyle = sg; x.font = "700 104px 'Space Grotesk', system-ui, sans-serif";
-  x.fillText(`${lastResult.score.toFixed(1)}%`, rx, top + 96);
-  x.fillStyle = "#a39ed1"; x.font = "28px Inter, system-ui, sans-serif";
-  x.fillText("match", rx, top + 136);
-  x.fillStyle = "#ffffff"; x.font = "600 32px 'Space Grotesk', system-ui, sans-serif";
-  x.fillText(`${lastResult.chars} chars`, rx, top + 196);
+  x.fillStyle = "#1b1a17"; x.font = "700 100px 'Space Grotesk', system-ui, sans-serif";
+  x.fillText(`${lastResult.score.toFixed(1)}%`, rx, top + 94);
+  x.fillStyle = "#8c8678"; x.font = "28px Inter, system-ui, sans-serif";
+  x.fillText("match", rx, top + 134);
+  x.fillStyle = "#1b1a17"; x.font = "600 32px 'Space Grotesk', system-ui, sans-serif";
+  x.fillText(`${lastResult.chars} chars`, rx, top + 194);
   // Draw the 5 score squares directly (no emoji font dependency on the card).
   const filled = starCount(lastResult.score);
-  const sq = 38, gap = 10, sy = top + 226;
+  const sq = 38, gap = 10, sy = top + 224;
   for (let i = 0; i < 5; i++) {
-    x.fillStyle = i < filled ? "#3bbf7a" : "#3a3566";
-    roundRect(x, rx + i * (sq + gap), sy, sq, sq, 8); x.fill();
+    x.fillStyle = i < filled ? "#2fa56a" : "#e7e2d5";
+    roundRect(x, rx + i * (sq + gap), sy, sq, sq, 7); x.fill();
   }
-  x.fillStyle = "#a39ed1"; x.font = "24px Inter, system-ui, sans-serif";
-  x.fillText(`as ${getNick() || "guest"}`, rx, top + 312);
+  x.fillStyle = "#8c8678"; x.font = "24px Inter, system-ui, sans-serif";
+  x.fillText(`as ${getNick() || "guest"}`, rx, top + 310);
 
   return c;
 }
