@@ -251,6 +251,9 @@ const NICK_COLLAPSE_DENY = [
 const NICK_WORD_DENY = [
   /\brape\b/, /\brapist\b/, /\bspic\b/, /\bcoon/, /\bpedo/, /\bchink/,
   /\bporn/, /\bretard/, /\bcum\b/,
+  // \bjews?\b blocks the bare demonym/slur but leaves jewel/jewish/jewelry; the
+  // rest are anatomy/sexual terms kept word-bounded to dodge uranus/openisland.
+  /\bjews?\b/, /\bjew(boy|rat|bag)/, /\bpenis/, /\bvagina/, /\bdildo/, /\banus\b/, /\bscrotum/, /\bboner\b/,
 ];
 
 function nicknameAllowed(nick) {
