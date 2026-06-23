@@ -108,6 +108,54 @@ async function persistLeaderboard() {
   });
 }
 
+// Nickname uniqueness: one display name per player at a time. Keyed by the
+// lowercased name -> playerId that holds it. Renaming frees the old name (the
+// player's prior claim is released), so it becomes available to others.
+const CLAIMS_PATH = join(DATA_DIR, "claims.json");
+let nickClaims = {}; // { [lowercasedName]: playerId }
+if (existsSync(CLAIMS_PATH)) {
+  try {
+    nickClaims = JSON.parse(await readFile(CLAIMS_PATH, "utf8"));
+  } catch (e) {
+    console.warn(`couldn't read claims: ${e.message}`);
+  }
+}
+// Seed from existing leaderboard rows so prior boards keep their names reserved.
+for (const rows of Object.values(leaderboard)) {
+  for (const r of rows) {
+    const k = r.nickname.toLowerCase();
+    if (!(k in nickClaims)) nickClaims[k] = r.playerId;
+  }
+}
+let claimsWriteQueued = false;
+function persistClaims() {
+  if (claimsWriteQueued) return;
+  claimsWriteQueued = true;
+  queueMicrotask(async () => {
+    claimsWriteQueued = false;
+    try {
+      mkdirSync(DATA_DIR, { recursive: true });
+      await writeFile(CLAIMS_PATH, JSON.stringify(nickClaims, null, 2));
+    } catch (e) {
+      console.warn(`couldn't write claims: ${e.message}`);
+    }
+  });
+}
+
+// Try to give `nickname` to `playerId`. Frees any name this player already held.
+// Returns true if claimed, false if another player holds it.
+function claimNickname(nickname, playerId) {
+  const key = nickname.toLowerCase();
+  const holder = nickClaims[key];
+  if (holder && holder !== playerId) return false;
+  for (const [k, pid] of Object.entries(nickClaims)) {
+    if (pid === playerId && k !== key) delete nickClaims[k]; // free old name
+  }
+  nickClaims[key] = playerId;
+  persistClaims();
+  return true;
+}
+
 // Tokens minted by /api/generate, redeemed once by /api/leaderboard/submit.
 const scoreTokens = new Map(); // token -> { puzzleId, score, chars, prompt }
 
@@ -301,6 +349,53 @@ async function moderatePrompt(prompt) {
   return { allowed: !verdict.startsWith("BLOCK") };
 }
 
+const NICK_MOD_INSTRUCTION = `You screen player nicknames for a family-friendly daily game. The nickname appears on a public leaderboard. BLOCK it if it contains or clearly evokes: profanity or slurs (any language, including creative/leetspeak spellings), sexual content, hate or harassment, violence, or impersonation of staff/admins. Plain harmless handles are fine. Reply with exactly one word: ALLOW or BLOCK.`;
+
+async function moderateNickname(nick) {
+  if (!GEMINI_API_KEY) return { allowed: true }; // engine offline; local list still applied
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_API_KEY}`;
+  const body = {
+    systemInstruction: { parts: [{ text: NICK_MOD_INSTRUCTION }] },
+    contents: [{ role: "user", parts: [{ text: nick }] }],
+    generationConfig: { temperature: 0, maxOutputTokens: 8, thinkingConfig: { thinkingBudget: 0 } },
+    safetySettings: SAFETY_SETTINGS,
+  };
+  let data;
+  try {
+    const r = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    if (!r.ok) return { allowed: true }; // fail open; local denylist already ran
+    data = await r.json();
+  } catch {
+    return { allowed: true };
+  }
+  if (data?.promptFeedback?.blockReason) return { allowed: false };
+  const verdict = (data?.candidates?.[0]?.content?.parts || [])
+    .map((p) => p.text || "")
+    .join("")
+    .trim()
+    .toUpperCase();
+  return { allowed: !verdict.startsWith("BLOCK") };
+}
+
+// Full nickname gate used by submit + rename: instant local denylist, then the
+// LLM moderator (catches creative spellings the list misses), then uniqueness.
+// Returns { ok } or { ok:false, error }. Claims the name on success.
+async function vetNickname(nickname, playerId) {
+  if (!nickname) return { ok: false, error: "nickname required" };
+  if (!nicknameAllowed(nickname))
+    return { ok: false, error: "that nickname isn't allowed — pick another" };
+  const mod = await moderateNickname(nickname);
+  if (!mod.allowed)
+    return { ok: false, error: "that nickname isn't allowed — pick another" };
+  if (!claimNickname(nickname, playerId))
+    return { ok: false, error: "that nickname's taken — pick another" };
+  return { ok: true };
+}
+
 const ENGINE_INSTRUCTION = `You are a rendering engine that turns a short description into a flat SVG illustration. Rules:
 - Output ONLY raw SVG. No markdown, no code fences, no commentary.
 - Root element: <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">.
@@ -419,13 +514,10 @@ app.get("/api/leaderboard/:date", (req, res) => {
 
 // Redeem a score token into a leaderboard row, keyed by playerId. Only today's
 // day is eligible; past-day tokens are rejected so practice can't reach the board.
-app.post("/api/leaderboard/submit", (req, res) => {
+app.post("/api/leaderboard/submit", async (req, res) => {
   const token = String(req.body?.token || "");
   const nickname = cleanNickname(req.body?.nickname);
   const playerId = String(req.body?.playerId || "");
-  if (!nickname) return res.status(400).json({ error: "nickname required" });
-  if (!nicknameAllowed(nickname))
-    return res.status(400).json({ error: "that nickname isn't allowed — pick another" });
   if (!playerId) return res.status(400).json({ error: "playerId required" });
   const scored = scoreTokens.get(token);
   if (!scored) return res.status(400).json({ error: "invalid or used token" });
@@ -433,6 +525,10 @@ app.post("/api/leaderboard/submit", (req, res) => {
     scoreTokens.delete(token);
     return res.status(403).json({ error: "past puzzles aren't eligible for the leaderboard" });
   }
+  // Gate the nickname (denylist + LLM + uniqueness) before consuming the token,
+  // so a rejected name can be fixed and retried with the same token.
+  const vet = await vetNickname(nickname, playerId);
+  if (!vet.ok) return res.status(400).json({ error: vet.error });
   scoreTokens.delete(token); // one-time
 
   const { date, score, chars } = scored;
@@ -451,13 +547,12 @@ app.post("/api/leaderboard/submit", (req, res) => {
 
 // Rename: relabel all of this player's rows across every day. The nickname
 // is display-only; playerId is the identity, so this is just a label swap.
-app.post("/api/player/rename", (req, res) => {
+app.post("/api/player/rename", async (req, res) => {
   const playerId = String(req.body?.playerId || "");
   const nickname = cleanNickname(req.body?.nickname);
   if (!playerId) return res.status(400).json({ error: "playerId required" });
-  if (!nickname) return res.status(400).json({ error: "nickname required" });
-  if (!nicknameAllowed(nickname))
-    return res.status(400).json({ error: "that nickname isn't allowed — pick another" });
+  const vet = await vetNickname(nickname, playerId);
+  if (!vet.ok) return res.status(400).json({ error: vet.error });
   let changed = 0;
   for (const rows of Object.values(leaderboard)) {
     for (const r of rows) {
