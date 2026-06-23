@@ -141,6 +141,7 @@ button.primary:disabled { background: #cbc6b8; border-color: #cbc6b8; color: #ff
 .card p { margin: 0 0 16px; color: #6f6a5c; font-size: 14px; }
 .card input { width: 100%; font-family: "Inter"; font-size: 16px; padding: 12px 14px; border: 1px solid #ddd7c8; border-radius: 11px; margin-bottom: 14px; text-align: center; }
 .card input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 4px rgba(255,84,54,0.13); }
+.card input:focus::placeholder { color: transparent; }
 .card button { width: 100%; }
 .nick-err { color: #c0392b; font-size: 13px; margin: -4px 0 12px; }
 
