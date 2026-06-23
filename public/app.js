@@ -6,8 +6,57 @@ const resultCanvas = $("resultCanvas");
 const tctx = targetCanvas.getContext("2d");
 const rctx = resultCanvas.getContext("2d");
 
-let days = []; // [{date, puzzleId, name, day, today}]
+let days = []; // [{date, puzzleId, name, banned, day, today}]
 let current = null; // the selected day object
+
+// Mirror of the server's banned-word matcher so we can warn the player before
+// they spend their one shot. The server stays the source of truth; this is UX.
+// Pass 1 is normal spelling; pass 2 catches devoweled abbreviations ("crcl")
+// without tripping normal vowel-bearing words. Keep in sync with server.js.
+const devowel = (s) =>
+  String(s).toLowerCase().replace(/[^a-z]/g, "").replace(/[aeiou]/g, "");
+
+function bannedWordHit(prompt, banned) {
+  if (!Array.isArray(banned) || !banned.length) return null;
+  const text = (prompt || "").toLowerCase();
+  const tokens = text.split(/[^a-z]+/).filter(Boolean);
+  for (const word of banned) {
+    const base = String(word).toLowerCase().replace(/[^a-z]/g, "");
+    if (!base) continue;
+    const re = new RegExp(`\\b${base}(?:s|es|ed|ing|er|ers|y|ies)?\\b`, "i");
+    if (re.test(text)) return word;
+    const skel = devowel(base);
+    if (skel.length >= 2 && tokens.some((t) => !/[aeiou]/.test(t) && t === skel))
+      return word;
+  }
+  return null;
+}
+
+// Re-run on every keystroke: update the char count, and if the prompt uses a
+// banned word, surface which one and lock the Paint button so the shot isn't
+// wasted on a guaranteed rejection.
+function refreshPrompt() {
+  const ta = $("prompt");
+  const val = ta.value.trim();
+  $("chars").textContent = val.length;
+  if (!current || ta.disabled) return;
+  const hit = bannedWordHit(val, current.banned);
+  $("bannedWarn").style.display = hit ? "inline" : "none";
+  $("bannedWarn").textContent = hit ? `“${hit}” is off-limits here` : "";
+  $("paint").disabled = !!hit;
+}
+
+function renderBanned(banned) {
+  const row = $("bannedRow");
+  if (!banned || !banned.length) {
+    row.style.display = "none";
+    return;
+  }
+  row.style.display = "flex";
+  $("bannedWords").innerHTML = banned
+    .map((w) => `<span class="word">${String(w).replace(/[<>&]/g, "")}</span>`)
+    .join("");
+}
 
 // --- Identity: stable playerId (the real key) + display nickname ---
 const PID_KEY = "dp:pid";
@@ -273,6 +322,9 @@ async function loadDay(date) {
   const svg = await (await fetch(`/api/target/${current.puzzleId}`)).text();
   await drawSvg(tctx, svg);
 
+  renderBanned(current.banned);
+  $("bannedWarn").style.display = "none";
+
   const prior = getAttempt(current.date);
   if (prior) {
     $("prompt").value = prior.prompt;
@@ -296,6 +348,12 @@ async function paint() {
   if (!getNick()) return showNickModal();
   const prompt = $("prompt").value.trim();
   if (!prompt) return;
+  const banned = bannedWordHit(prompt, current.banned);
+  if (banned) {
+    $("bannedWarn").style.display = "inline";
+    $("bannedWarn").textContent = `“${banned}” is off-limits here`;
+    return;
+  }
   const btn = $("paint");
   btn.disabled = true;
   $("result").innerHTML = `<span class="spinner"></span> painting…`;
@@ -352,7 +410,7 @@ async function init() {
   sel.addEventListener("change", () => loadDay(sel.value));
 
   const ta = $("prompt");
-  ta.addEventListener("input", () => ($("chars").textContent = ta.value.trim().length));
+  ta.addEventListener("input", refreshPrompt);
   $("paint").addEventListener("click", paint);
   ta.addEventListener("keydown", (e) => {
     if ((e.metaKey || e.ctrlKey) && e.key === "Enter") paint();

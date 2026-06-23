@@ -105,6 +105,15 @@ button.primary:disabled { background: #cbc6b8; border-color: #cbc6b8; color: #ff
 .charcount { font-size: 13px; color: var(--muted); margin-left: auto; }
 .charcount b { color: var(--ink); }
 
+.banned { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
+.banned-label { font-size: 12px; font-weight: 600; color: #8c8678; text-transform: uppercase; letter-spacing: 0.04em; }
+.banned-words { display: flex; gap: 6px; flex-wrap: wrap; }
+.banned-words .word {
+  font-size: 13px; font-weight: 600; color: #b03a2e; background: #fbe9e7;
+  border: 1px solid #f1c9c2; padding: 3px 10px; border-radius: 20px; text-decoration: line-through;
+}
+.banned-warn { font-size: 13px; font-weight: 500; color: #c0392b; }
+
 .result { margin-top: 22px; min-height: 10px; }
 .score { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
 .score .big { font-size: 56px; font-weight: 700; letter-spacing: -0.03em; line-height: 1; color: var(--ink); }

@@ -47,10 +47,15 @@
         <select id="day"></select>
         <span class="practice" id="practiceTag" style="display:none">practice · not on the daily board</span>
       </div>
+      <div class="banned" id="bannedRow" style="display:none">
+        <span class="banned-label">Can't say</span>
+        <span class="banned-words" id="bannedWords"></span>
+      </div>
       <textarea id="prompt" placeholder="e.g. a red circle in the middle on white" maxlength="600"></textarea>
       <div class="row">
         <button id="paint" class="primary">Paint it</button>
         <span class="charcount"><b id="chars">0</b> chars</span>
+        <span class="banned-warn" id="bannedWarn" style="display:none"></span>
       </div>
     </div>
 
