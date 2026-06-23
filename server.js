@@ -23,9 +23,41 @@ const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-2.5-flash";
 
 const app = express();
+// One reverse proxy (Caddy) sits in front, so trust its X-Forwarded-For to get
+// the real client IP for rate limiting.
+app.set("trust proxy", 1);
 app.use(express.json({ limit: "64kb" }));
 app.use(express.static(join(__dirname, "public")));
 app.get("/favicon.ico", (_req, res) => res.status(204).end());
+
+// Lightweight in-memory per-IP rate limiter (single instance, no dependency).
+// Returns Express middleware enforcing `max` requests per `windowMs` per IP.
+function rateLimit({ windowMs, max, message }) {
+  const hits = new Map(); // ip -> { count, reset }
+  return (req, res, next) => {
+    const now = Date.now();
+    if (hits.size > 5000) for (const [k, e] of hits) if (now > e.reset) hits.delete(k);
+    const ip = req.ip || "?";
+    let e = hits.get(ip);
+    if (!e || now > e.reset) { e = { count: 0, reset: now + windowMs }; hits.set(ip, e); }
+    e.count++;
+    if (e.count > max) {
+      const retry = Math.ceil((e.reset - now) / 1000);
+      res.set("Retry-After", String(retry));
+      return res.status(429).json({ error: message || `slow down — try again in ${retry}s` });
+    }
+    next();
+  };
+}
+
+// The expensive path (each miss = a paid Gemini call) gets the tightest caps:
+// a per-minute burst limit and a per-day ceiling, both per IP.
+const generateLimits = [
+  rateLimit({ windowMs: 60_000, max: Number(process.env.RL_GEN_PER_MIN) || 20 }),
+  rateLimit({ windowMs: 86_400_000, max: Number(process.env.RL_GEN_PER_DAY) || 400 }),
+];
+// Writes (name set/score submit) are cheap but spammable; looser cap.
+const writeLimit = rateLimit({ windowMs: 60_000, max: Number(process.env.RL_WRITE_PER_MIN) || 40 });
 
 // Puzzles: the player never sees the SVG source, only the rendered target.
 const puzzles = JSON.parse(
@@ -490,7 +522,7 @@ function sanitizeSvg(raw) {
   return s;
 }
 
-app.post("/api/generate", async (req, res) => {
+app.post("/api/generate", ...generateLimits, async (req, res) => {
   const prompt = (req.body?.prompt || "").trim();
   const date = String(req.body?.date || todayStr());
   const puzzle = puzzleForDate(date);
@@ -544,7 +576,7 @@ app.post("/api/generate", async (req, res) => {
 });
 
 // A starter nickname for new players: unique, approved, claimed for this player.
-app.get("/api/nickname/suggest", (req, res) => {
+app.get("/api/nickname/suggest", writeLimit, (req, res) => {
   const playerId = String(req.query.playerId || "");
   if (!playerId) return res.status(400).json({ error: "playerId required" });
   res.json({ nickname: suggestNickname(playerId) });
@@ -557,7 +589,7 @@ app.get("/api/leaderboard/:date", (req, res) => {
 
 // Redeem a score token into a leaderboard row, keyed by playerId. Only today's
 // day is eligible; past-day tokens are rejected so practice can't reach the board.
-app.post("/api/leaderboard/submit", async (req, res) => {
+app.post("/api/leaderboard/submit", writeLimit, async (req, res) => {
   const token = String(req.body?.token || "");
   const nickname = cleanNickname(req.body?.nickname);
   const playerId = String(req.body?.playerId || "");
@@ -590,7 +622,7 @@ app.post("/api/leaderboard/submit", async (req, res) => {
 
 // Rename: relabel all of this player's rows across every day. The nickname
 // is display-only; playerId is the identity, so this is just a label swap.
-app.post("/api/player/rename", async (req, res) => {
+app.post("/api/player/rename", writeLimit, async (req, res) => {
   const playerId = String(req.body?.playerId || "");
   const nickname = cleanNickname(req.body?.nickname);
   if (!playerId) return res.status(400).json({ error: "playerId required" });
