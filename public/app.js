@@ -112,7 +112,7 @@ async function showResult(svg, score, chars, name) {
       <span class="meta">match · <b>${chars}</b> chars</span>
       <span class="squares">${squares}</span>
     </div>
-    <div class="share">Daily Puzzle — ${name}\n${starsFor(score)}  ${p}%  ·  ${chars} chars</div>
+    <div class="share">Wordshot — ${name}\n${starsFor(score)}  ${p}%  ·  ${chars} chars</div>
     <button id="shareBtn">Share image</button>`;
   $("shareBtn").addEventListener("click", shareCard);
   countUp($("scoreNum"), score);
@@ -145,7 +145,7 @@ function buildShareCard() {
   x.fillStyle = "#ff5436"; x.beginPath(); x.arc(pad + 23, 57, 9, 0, 7); x.fill();
 
   x.fillStyle = "#1b1a17"; x.font = "700 40px 'Space Grotesk', system-ui, sans-serif";
-  x.fillText("Daily Puzzle", pad + 62, 68);
+  x.fillText("Wordshot", pad + 62, 68);
   const when = current?.today ? "Today" : current?.date || "";
   x.fillStyle = "#8c8678"; x.font = "24px Inter, system-ui, sans-serif";
   x.fillText(`${when} · ${lastResult.name}`, pad, 128);
@@ -199,7 +199,7 @@ async function shareCard() {
     const file = new File([blob], "daily-puzzle.png", { type: "image/png" });
     if (navigator.canShare && navigator.canShare({ files: [file] })) {
       try {
-        await navigator.share({ files: [file], title: "Daily Puzzle" });
+        await navigator.share({ files: [file], title: "Wordshot" });
         return;
       } catch {
         /* fell through to download */

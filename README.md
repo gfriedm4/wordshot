@@ -1,9 +1,11 @@
-# daily-puzzle
+# Wordshot
+
+(repo is `daily-puzzle`; the game is named **Wordshot**.)
 
 A one-shot prompt-to-picture game. You're shown a simple target picture (a red
 circle, a star on purple, three overlapping RGB circles). You describe it in
 words, an LLM paints what you said as a flat SVG, and you're scored on how
-closely the result matches the target. One shot per attempt — the game is
+closely the result matches the target. One shot per attempt, and the game is
 saying the most with the fewest words, like CSS Battle but with language instead
 of code.
 
