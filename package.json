@@ -1,5 +1,5 @@
 {
-  "name": "daily-puzzle",
+  "name": "wordshot",
   "version": "0.1.0",
   "private": true,
   "description": "One-shot prompt-to-picture game: describe the target, an LLM paints it as SVG, you're scored on pixel match.",
