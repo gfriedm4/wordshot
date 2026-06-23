@@ -28,5 +28,125 @@
     "id": "006",
     "name": "Star on purple",
     "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 512 512\"><rect width=\"512\" height=\"512\" fill=\"#7a3fb3\"/><polygon points=\"256,80 305,210 442,210 332,290 372,420 256,340 140,420 180,290 70,210 207,210\" fill=\"#000000\"/></svg>"
+  },
+  {
+    "id": "007",
+    "name": "Green dot, top-left",
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 512 512\"><rect width=\"512\" height=\"512\" fill=\"#ffffff\"/><circle cx=\"150\" cy=\"150\" r=\"90\" fill=\"#3bb273\"/></svg>"
+  },
+  {
+    "id": "008",
+    "name": "Orange square",
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 512 512\"><rect width=\"512\" height=\"512\" fill=\"#ffffff\"/><rect x=\"156\" y=\"156\" width=\"200\" height=\"200\" fill=\"#e8821e\"/></svg>"
+  },
+  {
+    "id": "009",
+    "name": "Triangle pointing down",
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 512 512\"><rect width=\"512\" height=\"512\" fill=\"#ffffff\"/><polygon points=\"96,120 416,120 256,400\" fill=\"#7a3fb3\"/></svg>"
+  },
+  {
+    "id": "010",
+    "name": "Two dots",
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 512 512\"><rect width=\"512\" height=\"512\" fill=\"#ffffff\"/><circle cx=\"150\" cy=\"256\" r=\"90\" fill=\"#e23d3d\"/><circle cx=\"362\" cy=\"256\" r=\"90\" fill=\"#2d6cdf\"/></svg>"
+  },
+  {
+    "id": "011",
+    "name": "Black diamond on yellow",
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 512 512\"><rect width=\"512\" height=\"512\" fill=\"#f2c81f\"/><polygon points=\"256,96 416,256 256,416 96,256\" fill=\"#1a1a1a\"/></svg>"
+  },
+  {
+    "id": "012",
+    "name": "Three stripes",
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 512 512\"><rect width=\"512\" height=\"512\" fill=\"#ffffff\"/><rect x=\"0\" y=\"0\" width=\"171\" height=\"512\" fill=\"#e23d3d\"/><rect x=\"341\" y=\"0\" width=\"171\" height=\"512\" fill=\"#2d6cdf\"/></svg>"
+  },
+  {
+    "id": "013",
+    "name": "Red ring",
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 512 512\"><rect width=\"512\" height=\"512\" fill=\"#ffffff\"/><circle cx=\"256\" cy=\"256\" r=\"150\" fill=\"#e23d3d\"/><circle cx=\"256\" cy=\"256\" r=\"75\" fill=\"#ffffff\"/></svg>"
+  },
+  {
+    "id": "014",
+    "name": "Pink diamond",
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 512 512\"><rect width=\"512\" height=\"512\" fill=\"#ffffff\"/><polygon points=\"256,116 396,256 256,396 116,256\" fill=\"#e0559b\"/></svg>"
+  },
+  {
+    "id": "015",
+    "name": "Split: red and blue",
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 512 512\"><rect width=\"512\" height=\"512\" fill=\"#ffffff\"/><rect x=\"0\" y=\"0\" width=\"256\" height=\"512\" fill=\"#e23d3d\"/><rect x=\"256\" y=\"0\" width=\"256\" height=\"512\" fill=\"#2d6cdf\"/></svg>"
+  },
+  {
+    "id": "016",
+    "name": "Yellow star on black",
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 512 512\"><rect width=\"512\" height=\"512\" fill=\"#1a1a1a\"/><polygon points=\"256,80 305,210 442,210 332,290 372,420 256,340 140,420 180,290 70,210 207,210\" fill=\"#f2c81f\"/></svg>"
+  },
+  {
+    "id": "017",
+    "name": "Circle over triangle",
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 512 512\"><rect width=\"512\" height=\"512\" fill=\"#ffffff\"/><polygon points=\"256,120 420,400 92,400\" fill=\"#3bb273\"/><circle cx=\"256\" cy=\"300\" r=\"80\" fill=\"#e23d3d\"/></svg>"
+  },
+  {
+    "id": "018",
+    "name": "Four squares",
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 512 512\"><rect width=\"512\" height=\"512\" fill=\"#ffffff\"/><rect x=\"96\" y=\"96\" width=\"160\" height=\"160\" fill=\"#e23d3d\"/><rect x=\"256\" y=\"96\" width=\"160\" height=\"160\" fill=\"#2d6cdf\"/><rect x=\"96\" y=\"256\" width=\"160\" height=\"160\" fill=\"#3bb273\"/><rect x=\"256\" y=\"256\" width=\"160\" height=\"160\" fill=\"#f2c81f\"/></svg>"
+  },
+  {
+    "id": "019",
+    "name": "Blue dot, bottom-right",
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 512 512\"><rect width=\"512\" height=\"512\" fill=\"#ffffff\"/><circle cx=\"380\" cy=\"380\" r=\"100\" fill=\"#2d6cdf\"/></svg>"
+  },
+  {
+    "id": "020",
+    "name": "Orange and teal overlap",
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 512 512\"><rect width=\"512\" height=\"512\" fill=\"#ffffff\"/><circle cx=\"210\" cy=\"256\" r=\"110\" fill=\"#e8821e\" fill-opacity=\"0.8\"/><circle cx=\"302\" cy=\"256\" r=\"110\" fill=\"#1ca3a3\" fill-opacity=\"0.8\"/></svg>"
+  },
+  {
+    "id": "021",
+    "name": "Red bar",
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 512 512\"><rect width=\"512\" height=\"512\" fill=\"#ffffff\"/><rect x=\"56\" y=\"216\" width=\"400\" height=\"80\" fill=\"#e23d3d\"/></svg>"
+  },
+  {
+    "id": "022",
+    "name": "Traffic light",
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 512 512\"><rect width=\"512\" height=\"512\" fill=\"#5b5b5b\"/><circle cx=\"256\" cy=\"140\" r=\"58\" fill=\"#e23d3d\"/><circle cx=\"256\" cy=\"256\" r=\"58\" fill=\"#f2c81f\"/><circle cx=\"256\" cy=\"372\" r=\"58\" fill=\"#3bb273\"/></svg>"
+  },
+  {
+    "id": "023",
+    "name": "White dot on red",
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 512 512\"><rect width=\"512\" height=\"512\" fill=\"#e23d3d\"/><circle cx=\"256\" cy=\"256\" r=\"150\" fill=\"#ffffff\"/></svg>"
+  },
+  {
+    "id": "024",
+    "name": "House",
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 512 512\"><rect width=\"512\" height=\"512\" fill=\"#ffffff\"/><rect x=\"156\" y=\"256\" width=\"200\" height=\"160\" fill=\"#c0563a\"/><polygon points=\"130,256 382,256 256,140\" fill=\"#7a3b2b\"/></svg>"
+  },
+  {
+    "id": "025",
+    "name": "Diagonal split",
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 512 512\"><rect width=\"512\" height=\"512\" fill=\"#2d6cdf\"/><polygon points=\"0,0 0,512 512,512\" fill=\"#f2c81f\"/></svg>"
+  },
+  {
+    "id": "026",
+    "name": "Bullseye",
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 512 512\"><rect width=\"512\" height=\"512\" fill=\"#ffffff\"/><circle cx=\"256\" cy=\"256\" r=\"150\" fill=\"#e23d3d\"/><circle cx=\"256\" cy=\"256\" r=\"100\" fill=\"#ffffff\"/><circle cx=\"256\" cy=\"256\" r=\"50\" fill=\"#e23d3d\"/></svg>"
+  },
+  {
+    "id": "027",
+    "name": "Hourglass",
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 512 512\"><rect width=\"512\" height=\"512\" fill=\"#ffffff\"/><polygon points=\"128,96 384,96 256,256\" fill=\"#7a3fb3\"/><polygon points=\"256,256 384,416 128,416\" fill=\"#7a3fb3\"/></svg>"
+  },
+  {
+    "id": "028",
+    "name": "Wide blue ellipse",
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 512 512\"><rect width=\"512\" height=\"512\" fill=\"#ffffff\"/><ellipse cx=\"256\" cy=\"256\" rx=\"180\" ry=\"100\" fill=\"#2d6cdf\"/></svg>"
+  },
+  {
+    "id": "029",
+    "name": "Black plus",
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 512 512\"><rect width=\"512\" height=\"512\" fill=\"#ffffff\"/><rect x=\"216\" y=\"96\" width=\"80\" height=\"320\" fill=\"#1a1a1a\"/><rect x=\"96\" y=\"216\" width=\"320\" height=\"80\" fill=\"#1a1a1a\"/></svg>"
+  },
+  {
+    "id": "030",
+    "name": "Cyan dot on navy",
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 512 512\"><rect width=\"512\" height=\"512\" fill=\"#1a2b5e\"/><circle cx=\"256\" cy=\"256\" r=\"110\" fill=\"#38bdf8\"/></svg>"
   }
 ]

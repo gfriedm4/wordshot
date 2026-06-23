@@ -1,8 +1,9 @@
 const $ = (id) => document.getElementById(id);
 const SIZE = 512;
 
+const targetCanvas = $("targetCanvas");
 const resultCanvas = $("resultCanvas");
-const tctx = $("targetCanvas").getContext("2d");
+const tctx = targetCanvas.getContext("2d");
 const rctx = resultCanvas.getContext("2d");
 
 let days = []; // [{date, puzzleId, name, day, today}]
@@ -81,6 +82,10 @@ function setLocked(locked, note) {
   if (locked && note) $("prompt").placeholder = note;
 }
 
+function starCount(score) {
+  return score >= 95 ? 5 : score >= 90 ? 4 : score >= 80 ? 3 : score >= 65 ? 2 : score >= 50 ? 1 : 0;
+}
+
 function starsFor(score) {
   return score >= 95 ? "🟩🟩🟩🟩🟩"
     : score >= 90 ? "🟩🟩🟩🟩⬜"
@@ -90,18 +95,91 @@ function starsFor(score) {
     : "⬜⬜⬜⬜⬜";
 }
 
+let lastResult = null; // for the share card
+
 async function showResult(svg, score, chars, name) {
   $("resultPh").style.display = "none";
   resultCanvas.style.display = "block";
   await drawSvg(rctx, svg);
   $("resultTag").textContent = `${chars} chars`;
   const p = score.toFixed(1);
+  lastResult = { score, chars, name };
   $("result").innerHTML = `
     <div class="score">
       <span class="big">${p}%</span>
       <span class="meta">match · ${chars} chars</span>
     </div>
-    <div class="share">Daily Puzzle — ${name}\n${starsFor(score)}  ${p}%  ·  ${chars} chars</div>`;
+    <div class="share">Daily Puzzle — ${name}\n${starsFor(score)}  ${p}%  ·  ${chars} chars</div>
+    <button id="shareBtn">Share image</button>`;
+  $("shareBtn").addEventListener("click", shareCard);
+}
+
+// Compose a result card (target + painting + score) and either invoke the native
+// share sheet or download it. Drawn from the two canvases already on screen.
+function buildShareCard() {
+  const W = 1200, H = 630, S = 300, pad = 60, top = 188;
+  const c = document.createElement("canvas");
+  c.width = W; c.height = H;
+  const x = c.getContext("2d");
+  x.fillStyle = "#faf7f2"; x.fillRect(0, 0, W, H);
+
+  x.fillStyle = "#1a1a1a"; x.font = "bold 44px system-ui, sans-serif";
+  x.fillText("Daily Puzzle", pad, 80);
+  const when = current?.today ? "Today" : current?.date || "";
+  x.fillStyle = "#888"; x.font = "26px system-ui, sans-serif";
+  x.fillText(`${when} · ${lastResult.name}`, pad, 122);
+
+  const panel = (cv, px, label) => {
+    x.fillStyle = "#888"; x.font = "20px system-ui, sans-serif";
+    x.fillText(label, px, top - 14);
+    x.fillStyle = "#fff"; x.fillRect(px, top, S, S);
+    x.drawImage(cv, px, top, S, S);
+    x.strokeStyle = "#e8e3d8"; x.lineWidth = 2; x.strokeRect(px, top, S, S);
+  };
+  panel(targetCanvas, pad, "Target");
+  panel(resultCanvas, pad + S + 36, "Your painting");
+
+  const rx = pad + 2 * S + 36 + 56;
+  x.fillStyle = "#1a1a1a"; x.font = "bold 110px system-ui, sans-serif";
+  x.fillText(`${lastResult.score.toFixed(1)}%`, rx, top + 110);
+  x.fillStyle = "#555"; x.font = "30px system-ui, sans-serif";
+  x.fillText("match", rx, top + 150);
+  x.font = "34px system-ui, sans-serif"; x.fillStyle = "#1a1a1a";
+  x.fillText(`${lastResult.chars} chars`, rx, top + 210);
+  // Draw the 5 score squares directly (no emoji font dependency on the card).
+  const filled = starCount(lastResult.score);
+  const sq = 38, gap = 10, sy = top + 240;
+  for (let i = 0; i < 5; i++) {
+    x.fillStyle = i < filled ? "#3bb273" : "#e3ddd0";
+    x.fillRect(rx + i * (sq + gap), sy, sq, sq);
+  }
+  x.fillStyle = "#888"; x.font = "26px system-ui, sans-serif";
+  x.fillText(`as ${getNick() || "guest"}`, rx, top + 322);
+
+  return c;
+}
+
+async function shareCard() {
+  if (!lastResult) return;
+  const c = buildShareCard();
+  c.toBlob(async (blob) => {
+    if (!blob) return;
+    const file = new File([blob], "daily-puzzle.png", { type: "image/png" });
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      try {
+        await navigator.share({ files: [file], title: "Daily Puzzle" });
+        return;
+      } catch {
+        /* fell through to download */
+      }
+    }
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "daily-puzzle.png";
+    a.click();
+    URL.revokeObjectURL(url);
+  }, "image/png");
 }
 
 function renderBoard(elId, rows, emptyMsg) {

@@ -47,6 +47,7 @@ button.primary:disabled { opacity: 0.5; cursor: default; }
 .score .big { font-size: 40px; font-weight: 700; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
 .score .meta { font-size: 14px; color: #555; font-variant-numeric: tabular-nums; }
 .share { background: #f6f2e8; padding: 12px 14px; border-radius: 9px; font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 13px; white-space: pre; margin-top: 14px; display: inline-block; }
+#shareBtn { display: block; margin-top: 12px; }
 .err { color: #b3261e; font-size: 14px; }
 .hint { font-size: 13px; color: #777; line-height: 1.5; margin-top: 18px; }
 .spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid #d8d2c4; border-top-color: var(--ink); border-radius: 50%; animation: spin 0.7s linear infinite; vertical-align: -2px; }

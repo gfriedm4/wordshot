@@ -111,12 +111,24 @@ Boards are keyed by *date*, not by puzzle, because the same puzzle recurs every
 six days as the cycle wraps; keying by date keeps each day's competition its own.
 The one-shot gate is per day too.
 
-Note: with only six puzzles the cycle repeats weekly. Add more puzzles to
-`puzzles/puzzles.json` and the rotation lengthens automatically.
+The bank currently holds 30 puzzles, so the cycle runs about a month before it
+repeats. Add more to `puzzles/puzzles.json` (flat shapes only — circle, rect,
+ellipse, polygon, solid fills) and the rotation lengthens automatically. Append,
+don't reorder: day indexing counts from the epoch, so inserting in the middle
+would shift which puzzle a past day maps to.
+
+## Sharing
+
+After you play, "Share image" builds a result card (target vs your painting,
+score, character count, your nickname) on a canvas. On devices that support the
+Web Share API with files it opens the native share sheet; everywhere else it
+downloads a PNG. The score squares are drawn directly, not emoji, so the card
+renders the same on any system.
 
 ## Status
 
 v0 prototype: single-shot with server-side scoring, a localStorage one-shot gate,
-nickname chooser, two per-day leaderboards (accuracy + brevity), and daily
-rotation with a playable past-day archive. Next obvious steps: a share image, and
-real accounts if/when the leaderboard gets competitive enough to need them.
+nickname chooser, two per-day leaderboards (accuracy + brevity), daily rotation
+with a playable past-day archive (30-puzzle bank), and a shareable result card.
+Next obvious step: real accounts if/when the leaderboard gets competitive enough
+to need them.
