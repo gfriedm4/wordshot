@@ -5,9 +5,10 @@ const resultCanvas = $("resultCanvas");
 const tctx = $("targetCanvas").getContext("2d");
 const rctx = resultCanvas.getContext("2d");
 
-let currentPuzzle = null;
+let days = []; // [{date, puzzleId, name, day, today}]
+let current = null; // the selected day object
 
-// --- Identity: a stable playerId (the real key) + a display nickname ---
+// --- Identity: stable playerId (the real key) + display nickname ---
 const PID_KEY = "dp:pid";
 const NICK_KEY = "dp:nick";
 function getPlayerId() {
@@ -33,7 +34,6 @@ async function saveNickFromModal() {
   setNick(n);
   $("whoName").textContent = n;
   $("nickModal").classList.remove("show");
-  // If the name actually changed, relabel my existing rows server-side.
   if (prev && prev !== n) {
     try {
       await fetch("/api/player/rename", {
@@ -45,20 +45,20 @@ async function saveNickFromModal() {
       /* non-fatal */
     }
   }
-  if (currentPuzzle) loadLeaderboard(currentPuzzle);
+  if (current) loadLeaderboard(current.date);
 }
 
-// --- One-shot gate ---
-const saveKey = (id) => `dp:v1:${id}`;
-const getAttempt = (id) => {
+// --- One-shot gate, keyed by day (date) ---
+const saveKey = (date) => `dp:v2:${date}`;
+const getAttempt = (date) => {
   try {
-    return JSON.parse(localStorage.getItem(saveKey(id)) || "null");
+    return JSON.parse(localStorage.getItem(saveKey(date)) || "null");
   } catch {
     return null;
   }
 };
-const saveAttempt = (id, a) =>
-  localStorage.setItem(saveKey(id), JSON.stringify(a));
+const saveAttempt = (date, a) =>
+  localStorage.setItem(saveKey(date), JSON.stringify(a));
 
 function drawSvg(ctx, svg) {
   return new Promise((resolve, reject) => {
@@ -123,28 +123,38 @@ function renderBoard(elId, rows, emptyMsg) {
     .join("");
 }
 
-async function loadLeaderboard(id) {
+function applyBoards(data) {
+  $("lbFloor").textContent = `· ≥${data.floor}% to qualify`;
+  renderBoard("lbAccuracy", data.accuracy, "No scores yet. Be first.");
+  renderBoard("lbBrevity", data.brevity, "No qualifying scores yet.");
+}
+
+async function loadLeaderboard(date) {
   try {
     const data = await (
-      await fetch(`/api/leaderboard/${id}?me=${encodeURIComponent(getPlayerId())}`)
+      await fetch(`/api/leaderboard/${date}?me=${encodeURIComponent(getPlayerId())}`)
     ).json();
-    $("lbFloor").textContent = `· ≥${data.floor}% to qualify`;
-    renderBoard("lbAccuracy", data.accuracy, "No scores yet. Be first.");
-    renderBoard("lbBrevity", data.brevity, "No qualifying scores yet.");
+    applyBoards(data);
   } catch {
     /* leave whatever's there */
   }
 }
 
-async function loadPuzzle(id) {
-  currentPuzzle = id;
-  const name = $("puzzle").selectedOptions[0]?.textContent || "";
-  $("lbPuzzle").textContent = `· ${name}`;
-  const svg = await (await fetch(`/api/target/${id}`)).text();
-  await drawSvg(tctx, svg);
-  loadLeaderboard(id);
+async function loadDay(date) {
+  current = days.find((d) => d.date === date) || days[0];
+  const { name, today } = current;
+  $("lbPuzzle").textContent = `· ${today ? "Today" : current.date} · ${name}`;
 
-  const prior = getAttempt(id);
+  // practice vs live framing
+  $("practiceTag").style.display = today ? "none" : "inline-block";
+  $("practiceNote").style.display = today ? "none" : "block";
+  $("lbGrid").style.display = today ? "" : "none";
+  if (today) loadLeaderboard(current.date);
+
+  const svg = await (await fetch(`/api/target/${current.puzzleId}`)).text();
+  await drawSvg(tctx, svg);
+
+  const prior = getAttempt(current.date);
   if (prior) {
     $("prompt").value = prior.prompt;
     $("chars").textContent = prior.chars;
@@ -163,7 +173,7 @@ async function loadPuzzle(id) {
 }
 
 async function paint() {
-  if (getAttempt(currentPuzzle)) return;
+  if (!current || getAttempt(current.date)) return;
   if (!getNick()) return showNickModal();
   const prompt = $("prompt").value.trim();
   if (!prompt) return;
@@ -174,23 +184,22 @@ async function paint() {
     const res = await fetch("/api/generate", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ prompt, puzzleId: currentPuzzle }),
+      body: JSON.stringify({ prompt, date: current.date }),
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || `error ${res.status}`);
 
-    const name = $("puzzle").selectedOptions[0]?.textContent || "";
-    saveAttempt(currentPuzzle, {
+    saveAttempt(current.date, {
       prompt,
       svg: data.svg,
       score: data.score,
       chars: data.chars,
     });
     setLocked(true, "You've already played this one.");
-    await showResult(data.svg, data.score, data.chars, name);
+    await showResult(data.svg, data.score, data.chars, current.name);
 
-    // Trade the server-issued token for a board row.
-    if (data.token) {
+    // Only today's day is eligible; submit the token to claim a board row.
+    if (data.eligible && data.token) {
       const r = await fetch("/api/leaderboard/submit", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -200,12 +209,7 @@ async function paint() {
           playerId: getPlayerId(),
         }),
       });
-      if (r.ok) {
-        const d = await r.json();
-        $("lbFloor").textContent = `· ≥${d.floor}% to qualify`;
-        renderBoard("lbAccuracy", d.accuracy, "No scores yet. Be first.");
-        renderBoard("lbBrevity", d.brevity, "No qualifying scores yet.");
-      }
+      if (r.ok) applyBoards(await r.json());
     }
   } catch (e) {
     $("result").innerHTML = `<span class="err">${e.message}</span>`;
@@ -213,14 +217,20 @@ async function paint() {
   }
 }
 
+function dayLabel(d) {
+  if (d.today) return `Today · ${d.name}`;
+  return `${d.date} · ${d.name}`;
+}
+
 async function init() {
-  getPlayerId(); // ensure one exists
-  const list = await (await fetch("/api/puzzles")).json();
-  const sel = $("puzzle");
-  sel.innerHTML = list
-    .map((p) => `<option value="${p.id}">${p.name}</option>`)
+  getPlayerId();
+  const data = await (await fetch("/api/days")).json();
+  days = data.days || [];
+  const sel = $("day");
+  sel.innerHTML = days
+    .map((d) => `<option value="${d.date}">${dayLabel(d)}</option>`)
     .join("");
-  sel.addEventListener("change", () => loadPuzzle(sel.value));
+  sel.addEventListener("change", () => loadDay(sel.value));
 
   const ta = $("prompt");
   ta.addEventListener("input", () => ($("chars").textContent = ta.value.trim().length));
@@ -239,7 +249,7 @@ async function init() {
     if (e.key === "Enter") saveNickFromModal();
   });
 
-  if (list.length) await loadPuzzle(list[0].id);
+  if (days.length) await loadDay(days[0].date); // today first
   if (!getNick()) showNickModal();
 }
 

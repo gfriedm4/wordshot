@@ -128,9 +128,9 @@ const toRow = (me) => (r) => ({
 
 // Two boards off the same rows: accuracy (best match) and brevity (shortest
 // prompt that cleared the floor). `me` flags the requester's own row, by
-// playerId, without leaking anyone else's id.
-function boardsFor(puzzleId, me) {
-  const rows = leaderboard[puzzleId] || [];
+// playerId, without leaking anyone else's id. Keyed by day (a date string).
+function boardsFor(dayKey, me) {
+  const rows = leaderboard[dayKey] || [];
   const accuracy = rows
     .slice()
     .sort((a, b) => b.score - a.score || a.chars - b.chars || a.at - b.at)
@@ -144,10 +144,37 @@ function boardsFor(puzzleId, me) {
   return { accuracy, brevity, floor: BREVITY_FLOOR };
 }
 
-// Strip puzzle SVG so the answer key never ships to the browser.
-app.get("/api/puzzles", (_req, res) => {
-  res.json(puzzles.map(({ id, name }) => ({ id, name })));
-});
+// --- Daily rotation ---
+// Puzzles cycle by day from a fixed epoch. Today's day gets the live leaderboard;
+// earlier days are playable as practice but can't be submitted. Boards are keyed
+// by DATE, not puzzle, because the same puzzle recurs every puzzles.length days.
+const EPOCH = "2026-06-18"; // day 0; backdates the seed puzzles as past days
+const DAY_MS = 86400000;
+const dayMs = (d) => Date.parse(`${d}T00:00:00Z`);
+const todayStr = () => new Date().toISOString().slice(0, 10);
+const dayIndex = (d) => Math.floor((dayMs(d) - dayMs(EPOCH)) / DAY_MS);
+const wrap = (i) => puzzles[((i % puzzles.length) + puzzles.length) % puzzles.length];
+
+function puzzleForDate(d) {
+  const i = dayIndex(d);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(d) || isNaN(i) || i < 0 || d > todayStr()) return null;
+  return wrap(i);
+}
+
+// Calendar of playable days, newest first (epoch..today), capped.
+function dayList() {
+  const today = todayStr();
+  const out = [];
+  for (let i = dayIndex(today); i >= 0 && out.length < 60; i--) {
+    const d = new Date(dayMs(EPOCH) + i * DAY_MS).toISOString().slice(0, 10);
+    const p = wrap(i);
+    out.push({ date: d, puzzleId: p.id, name: p.name, day: i + 1, today: d === today });
+  }
+  return out;
+}
+
+// The day calendar (today first). Client uses [0] as today's puzzle.
+app.get("/api/days", (_req, res) => res.json({ days: dayList() }));
 
 // The renderer needs the target image to diff against, so it gets the SVG,
 // but only as a rasterized data source, and the player can't read network tabs
@@ -171,7 +198,13 @@ async function generateSvg(prompt) {
   const body = {
     systemInstruction: { parts: [{ text: ENGINE_INSTRUCTION }] },
     contents: [{ role: "user", parts: [{ text: prompt }] }],
-    generationConfig: { temperature: 0, maxOutputTokens: 2048 },
+    generationConfig: {
+      temperature: 0,
+      maxOutputTokens: 4096,
+      // 2.5-flash "thinks" by default and can spend the whole token budget on
+      // reasoning, returning empty text. We want the SVG, not the deliberation.
+      thinkingConfig: { thinkingBudget: 0 },
+    },
   };
   const r = await fetch(url, {
     method: "POST",
@@ -204,45 +237,48 @@ function sanitizeSvg(raw) {
 
 app.post("/api/generate", async (req, res) => {
   const prompt = (req.body?.prompt || "").trim();
-  const puzzleId = String(req.body?.puzzleId || "");
-  const target = targetPixels.get(puzzleId);
-  if (!target) return res.status(400).json({ error: "unknown puzzle" });
+  const date = String(req.body?.date || todayStr());
+  const puzzle = puzzleForDate(date);
+  if (!puzzle) return res.status(400).json({ error: "no puzzle for that day" });
+  const target = targetPixels.get(puzzle.id);
   if (!prompt) return res.status(400).json({ error: "empty prompt" });
   if (prompt.length > 600)
     return res.status(400).json({ error: "prompt too long (max 600 chars)" });
   if (!GEMINI_API_KEY)
     return res.status(503).json({ error: "engine offline: GEMINI_API_KEY not set" });
 
-  // Mint a one-time token bound to this server-measured score, so the board
-  // submission can't lie about the number.
-  const reply = (svg, score, cached) => {
+  const eligible = date === todayStr(); // only today's day feeds the leaderboard
+
+  // Mint a one-time token bound to this server-measured score + day, so the
+  // board submission can't lie about the number or backdoor a past day.
+  const reply = (svg, score) => {
     const chars = prompt.length;
     const token = randomUUID();
-    scoreTokens.set(token, { puzzleId, score, chars, prompt });
-    return res.json({ svg, score, chars, token, cached });
+    scoreTokens.set(token, { date, score, chars });
+    return res.json({ svg, score, chars, token, eligible });
   };
 
-  const key = cacheKey(puzzleId, prompt);
+  const key = cacheKey(puzzle.id, prompt);
   const hit = resultCache.get(key);
-  if (hit) return reply(hit.svg, hit.score, true);
+  if (hit) return reply(hit.svg, hit.score);
 
   try {
     const svg = await generateSvg(prompt);
     const score = Math.round(scoreMatch(target, rasterize(svg)) * 10) / 10;
     resultCache.set(key, { svg, score });
-    reply(svg, score, false);
+    reply(svg, score);
   } catch (e) {
     res.status(502).json({ error: String(e.message || e) });
   }
 });
 
-// Read a puzzle's two boards. ?me=<playerId> flags the caller's own rows.
-app.get("/api/leaderboard/:id", (req, res) => {
-  res.json(boardsFor(req.params.id, String(req.query.me || "")));
+// Read a day's two boards. ?me=<playerId> flags the caller's own rows.
+app.get("/api/leaderboard/:date", (req, res) => {
+  res.json(boardsFor(req.params.date, String(req.query.me || "")));
 });
 
-// Redeem a score token into a leaderboard row, keyed by playerId. Best score
-// per player per puzzle wins; resubmitting can only improve your own row.
+// Redeem a score token into a leaderboard row, keyed by playerId. Only today's
+// day is eligible; past-day tokens are rejected so practice can't reach the board.
 app.post("/api/leaderboard/submit", (req, res) => {
   const token = String(req.body?.token || "");
   const nickname = cleanNickname(req.body?.nickname);
@@ -251,10 +287,14 @@ app.post("/api/leaderboard/submit", (req, res) => {
   if (!playerId) return res.status(400).json({ error: "playerId required" });
   const scored = scoreTokens.get(token);
   if (!scored) return res.status(400).json({ error: "invalid or used token" });
+  if (scored.date !== todayStr()) {
+    scoreTokens.delete(token);
+    return res.status(403).json({ error: "past puzzles aren't eligible for the leaderboard" });
+  }
   scoreTokens.delete(token); // one-time
 
-  const { puzzleId, score, chars } = scored;
-  const rows = (leaderboard[puzzleId] ||= []);
+  const { date, score, chars } = scored;
+  const rows = (leaderboard[date] ||= []);
   const mine = rows.find((r) => r.playerId === playerId);
   const better = (s, c) => s > (mine?.score ?? -1) || (s === mine?.score && c < mine.chars);
   if (!mine) {
@@ -264,10 +304,10 @@ app.post("/api/leaderboard/submit", (req, res) => {
     if (better(score, chars)) Object.assign(mine, { score, chars, at: Date.now() });
   }
   persistLeaderboard();
-  res.json(boardsFor(puzzleId, playerId));
+  res.json(boardsFor(date, playerId));
 });
 
-// Rename: relabel all of this player's rows across every puzzle. The nickname
+// Rename: relabel all of this player's rows across every day. The nickname
 // is display-only; playerId is the identity, so this is just a label swap.
 app.post("/api/player/rename", (req, res) => {
   const playerId = String(req.body?.playerId || "");

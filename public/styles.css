@@ -57,6 +57,8 @@ button.primary:disabled { opacity: 0.5; cursor: default; }
 .who a { color: #8a7d57; text-decoration: none; margin-left: 4px; }
 .who a:hover { text-decoration: underline; }
 
+.practice { font-size: 12px; color: #9a7b2e; background: #fbf3dd; border: 1px solid #efe1b8; padding: 3px 8px; border-radius: 6px; }
+.practice-note { margin-top: 10px; font-size: 13px; color: #7a6a3a; background: #fbf3dd; border: 1px solid #efe1b8; border-radius: 9px; padding: 10px 12px; }
 .lb-title { margin-top: 24px; font-size: 15px; font-weight: 600; }
 .lb-title .sub { font-weight: 400; }
 .lb-grid { margin-top: 10px; }

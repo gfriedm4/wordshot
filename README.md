@@ -94,9 +94,29 @@ This is casual-grade integrity, right for the stakes. The nickname is claimable
 rows. Both are things real accounts would fix once there's something worth
 protecting.
 
+## Daily rotation
+
+There's one puzzle per day. Puzzles cycle by day from a fixed epoch (`EPOCH` in
+`server.js`), so "today" advances on its own and the six seed puzzles are
+backdated as the most recent past days. The day picker lists today plus the
+archive, newest first.
+
+You can play any past day for practice, but only *today's* puzzle feeds the
+leaderboard. That rule is enforced server-side, not just hidden in the UI: the
+score token is bound to the day it was played, and `/api/leaderboard/submit`
+rejects any token whose day isn't today. So a past day still scores and shows
+your result, but it can't reach the board.
+
+Boards are keyed by *date*, not by puzzle, because the same puzzle recurs every
+six days as the cycle wraps; keying by date keeps each day's competition its own.
+The one-shot gate is per day too.
+
+Note: with only six puzzles the cycle repeats weekly. Add more puzzles to
+`puzzles/puzzles.json` and the rotation lengthens automatically.
+
 ## Status
 
-v0 prototype. Single-shot with server-side scoring, a localStorage one-shot gate,
-nickname chooser, and a per-puzzle leaderboard. Six built-in puzzles, no daily
-rotation yet. Next obvious steps: a real "puzzle of the day," a share image, and
+v0 prototype: single-shot with server-side scoring, a localStorage one-shot gate,
+nickname chooser, two per-day leaderboards (accuracy + brevity), and daily
+rotation with a playable past-day archive. Next obvious steps: a share image, and
 real accounts if/when the leaderboard gets competitive enough to need them.

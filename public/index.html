@@ -30,8 +30,9 @@
 
     <div class="controls">
       <div class="puzzlepick">
-        <label for="puzzle">Puzzle</label>
-        <select id="puzzle"></select>
+        <label for="day">Day</label>
+        <select id="day"></select>
+        <span class="practice" id="practiceTag" style="display:none">practice · not on the daily board</span>
       </div>
       <textarea id="prompt" placeholder="e.g. a red circle in the middle on white" maxlength="600"></textarea>
       <div class="row">
@@ -43,7 +44,10 @@
     <div class="result" id="result"></div>
 
     <div class="lb-title">Leaderboard <span class="sub" id="lbPuzzle"></span></div>
-    <div class="boards lb-grid">
+    <div class="practice-note" id="practiceNote" style="display:none">
+      This is a past day, played for practice. Only today's puzzle counts on the leaderboard.
+    </div>
+    <div class="boards lb-grid" id="lbGrid">
       <div class="leaderboard">
         <div class="lb-head">Best match</div>
         <ol id="lbAccuracy" class="lb-list"><li class="lb-empty">No scores yet. Be first.</li></ol>
