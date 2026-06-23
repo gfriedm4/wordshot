@@ -412,6 +412,45 @@ async function moderatePrompt(prompt) {
   return { allowed: !verdict.startsWith("BLOCK") };
 }
 
+// The regex catches obvious spellings and devoweled abbreviations, but a wordlist
+// can't reach synonyms ("orb" for a circle) or pure description that still names
+// the thing. This LLM pass judges intent: did the player name the subject? It's a
+// separate verdict from safety moderation so the player-facing message can be
+// specific ("you named it") instead of the generic "not allowed". Runs in
+// parallel with moderation, and fails OPEN — the regex is the guaranteed floor,
+// so on an API hiccup we'd rather let a clever prompt through than falsely reject
+// a legit one mid-game.
+const NAMING_JUDGE_INSTRUCTION = `You referee a "describe it without naming it" drawing game, like the gameshow Password. The player recreates a target picture by describing it to an image engine, WITHOUT naming what it is. You get the target's name, a list of banned words, and the player's prompt. BLOCK only if the prompt names the subject directly, uses an obvious abbreviation or misspelling of a banned word (e.g. "crcl" for circle), or uses a clear one-word synonym for it (e.g. "orb" or "disc" for a circle). ALLOW prompts that describe the subject indirectly through its shape, parts, colors, position, or comparisons. When unsure, ALLOW — catch deliberate naming, don't punish creative description. Reply with exactly one word: ALLOW or BLOCK.`;
+
+async function judgeNaming(prompt, puzzle) {
+  if (!GEMINI_API_KEY || !puzzle?.banned?.length) return { named: false };
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_API_KEY}`;
+  const context = `Target: ${puzzle.name}\nBanned words: ${puzzle.banned.join(", ")}\nPlayer prompt: ${prompt}`;
+  const body = {
+    systemInstruction: { parts: [{ text: NAMING_JUDGE_INSTRUCTION }] },
+    contents: [{ role: "user", parts: [{ text: context }] }],
+    generationConfig: { temperature: 0, maxOutputTokens: 8, thinkingConfig: { thinkingBudget: 0 } },
+    safetySettings: SAFETY_SETTINGS,
+  };
+  try {
+    const r = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    if (!r.ok) return { named: false }; // fail open; regex is the floor
+    const data = await r.json();
+    const verdict = (data?.candidates?.[0]?.content?.parts || [])
+      .map((p) => p.text || "")
+      .join("")
+      .trim()
+      .toUpperCase();
+    return { named: verdict.startsWith("BLOCK") };
+  } catch {
+    return { named: false };
+  }
+}
+
 const NICK_MOD_INSTRUCTION = `You screen player nicknames for a family-friendly daily game. The nickname appears on a public leaderboard. BLOCK it if it contains or clearly evokes: profanity or slurs (any language, including creative/leetspeak spellings), sexual content, hate or harassment, violence, or impersonation of staff/admins. Plain harmless handles are fine. Reply with exactly one word: ALLOW or BLOCK.`;
 
 async function moderateNickname(nick) {
@@ -580,11 +619,22 @@ app.post("/api/generate", ...generateLimits, async (req, res) => {
       .status(400)
       .json({ error: "that prompt isn't allowed, try describing the picture" });
 
-  const moderation = await moderatePrompt(prompt);
+  // Two LLM passes, run together so the player waits on one round-trip, not two:
+  // safety moderation, and the naming judge that catches synonyms/disguises the
+  // regex can't (the clever ~10% that cleared bannedWordHit above).
+  const [moderation, naming] = await Promise.all([
+    moderatePrompt(prompt),
+    judgeNaming(prompt, puzzle),
+  ]);
   if (!moderation.allowed)
     return res
       .status(400)
       .json({ error: "that prompt isn't allowed, try describing the picture" });
+  if (naming.named)
+    return res.status(400).json({
+      error: "too close — that names what it is. describe it another way",
+      bannedWord: true,
+    });
 
   const eligible = date === todayStr(); // only today's day feeds the leaderboard
 
