@@ -420,7 +420,22 @@ async function moderatePrompt(prompt) {
 // parallel with moderation, and fails OPEN — the regex is the guaranteed floor,
 // so on an API hiccup we'd rather let a clever prompt through than falsely reject
 // a legit one mid-game.
-const NAMING_JUDGE_INSTRUCTION = `You referee a "describe it without naming it" drawing game, like the gameshow Password. The player recreates a target picture by describing it to an image engine, WITHOUT naming what it is. You get the target's name, a list of banned words, and the player's prompt. BLOCK only if the prompt names the subject directly, uses an obvious abbreviation or misspelling of a banned word (e.g. "crcl" for circle), or uses a clear one-word synonym for it (e.g. "orb" or "disc" for a circle). ALLOW prompts that describe the subject indirectly through its shape, parts, colors, position, or comparisons. When unsure, ALLOW — catch deliberate naming, don't punish creative description. Reply with exactly one word: ALLOW or BLOCK.`;
+const NAMING_JUDGE_INSTRUCTION = `You referee a "describe it without naming it" drawing game, like the gameshow Password. The player recreates a target picture by describing it to an image engine, and the ONLY rule is they may not NAME what it is. You get the target's name, a list of banned words, and the player's prompt.
+
+BLOCK the prompt ONLY if it contains a naming word for the subject:
+- a banned word, or its misspelling/abbreviation (e.g. "trngl" or "tri-angle" for triangle)
+- a clear one-word synonym or symbol-name for it (e.g. "orb"/"disc" for a circle, "asterisk" for a star)
+
+ALLOW everything else, including descriptions that fully and obviously identify the target. Describing the shape by its structure is the whole point of the game, so it is always fine: number of sides, corners, or points; generic geometry words like "polygon", "shape", or "form"; colors; size; position; and comparisons to everyday objects. A prompt is NOT a violation just because it makes the answer obvious — only naming it is.
+
+Examples for a target whose banned word is "triangle":
+- "yellow 3 corner polygon" -> ALLOW (describes structure, never names it)
+- "shape with three sides" -> ALLOW
+- "a three-pointed wedge" -> ALLOW
+- "a yellow triangle" -> BLOCK: triangle
+- "yllo trngl" -> BLOCK: trngl
+
+When unsure, ALLOW. Reply with "ALLOW", or "BLOCK: <word>" where <word> is the single offending word copied verbatim from the player's prompt (so they know exactly what to remove). Always include the word on a BLOCK.`;
 
 async function judgeNaming(prompt, puzzle) {
   if (!GEMINI_API_KEY || !puzzle?.banned?.length) return { named: false };
@@ -429,7 +444,7 @@ async function judgeNaming(prompt, puzzle) {
   const body = {
     systemInstruction: { parts: [{ text: NAMING_JUDGE_INSTRUCTION }] },
     contents: [{ role: "user", parts: [{ text: context }] }],
-    generationConfig: { temperature: 0, maxOutputTokens: 8, thinkingConfig: { thinkingBudget: 0 } },
+    generationConfig: { temperature: 0, maxOutputTokens: 16, thinkingConfig: { thinkingBudget: 0 } },
     safetySettings: SAFETY_SETTINGS,
   };
   try {
@@ -443,9 +458,14 @@ async function judgeNaming(prompt, puzzle) {
     const verdict = (data?.candidates?.[0]?.content?.parts || [])
       .map((p) => p.text || "")
       .join("")
-      .trim()
-      .toUpperCase();
-    return { named: verdict.startsWith("BLOCK") };
+      .trim();
+    if (!/^BLOCK/i.test(verdict)) return { named: false };
+    // "BLOCK: <word>" — pull the offending word so the player knows what to drop.
+    const colon = verdict.indexOf(":");
+    const word = colon >= 0
+      ? verdict.slice(colon + 1).trim().replace(/^["'`]+|["'`.\s]+$/g, "").split(/\s+/)[0]
+      : "";
+    return { named: true, word: word || null };
   } catch {
     return { named: false };
   }
@@ -632,8 +652,10 @@ app.post("/api/generate", ...generateLimits, async (req, res) => {
       .json({ error: "that prompt isn't allowed, try describing the picture" });
   if (naming.named)
     return res.status(400).json({
-      error: "too close — that names what it is. describe it another way",
-      bannedWord: true,
+      error: naming.word
+        ? `"${naming.word}" gives it away — describe the shape instead`
+        : "too close — that names what it is. describe it another way",
+      bannedWord: naming.word || true,
     });
 
   const eligible = date === todayStr(); // only today's day feeds the leaderboard
