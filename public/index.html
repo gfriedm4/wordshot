@@ -4,9 +4,11 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Wordshot — say it in the fewest words</title>
+  <meta name="description" content="Wordshot is a daily one-shot word game: describe the target image in the fewest words, the engine paints what you say, and you're scored on accuracy and brevity." />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+  <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&display=optional" onload="this.onload=null;this.rel='stylesheet'" />
+  <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&display=optional" /></noscript>
   <link rel="stylesheet" href="/styles.css" />
 </head>
 <body>
@@ -22,6 +24,7 @@
       <div class="who">Playing as <b id="whoName">…</b> <a href="#" id="changeNick">change</a></div>
     </header>
 
+    <main>
     <p class="tagline">
       On the left is the target. Describe it, the engine paints what you say, and you're scored on how close it lands. One shot, so make every word count.
     </p>
@@ -73,6 +76,7 @@
     <p class="hint">
       The engine only knows flat shapes: circles, squares, triangles, stars. It can't see the target, only your words. One shot per puzzle, so make it count.
     </p>
+    </main>
   </div>
 
   <div class="modal" id="nickModal">
@@ -86,6 +90,6 @@
     </div>
   </div>
 
-  <script src="/app.js"></script>
+  <script src="/app.js" defer></script>
 </body>
 </html>

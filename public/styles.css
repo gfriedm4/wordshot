@@ -3,9 +3,10 @@
   --card: #fbf9f4;        /* app surface */
   --surface: #ffffff;     /* inner panels */
   --ink: #1b1a17;
-  --muted: #8c8678;
+  --muted: #6b665a;       /* warm grey, WCAG AA (>=4.5:1) on card/surface/accent-soft */
   --line: #e7e2d5;
-  --accent: #ff5436;      /* vermilion, used sparingly */
+  --accent: #ff5436;      /* vermilion, used sparingly — fills/dots/borders only */
+  --accent-ink: #c83417;  /* darker vermilion for accent-colored text (AA on light) */
   --accent-soft: #ffe9e3;
   --gold: #e9b53c;
   --silver: #c2c0b6;
@@ -44,7 +45,7 @@ h1 { font-size: 25px; margin: 0; letter-spacing: -0.02em; font-weight: 700; }
 .brand-sub { font-size: 12.5px; color: var(--muted); margin-top: 2px; }
 .who { font-size: 13px; color: var(--muted); }
 .who b { color: var(--ink); font-weight: 600; }
-.who a { color: var(--accent); text-decoration: none; margin-left: 4px; font-weight: 600; }
+.who a { color: var(--accent-ink); text-decoration: none; margin-left: 4px; font-weight: 600; }
 .who a:hover { text-decoration: underline; }
 
 .tagline { color: #5d584c; font-size: 14.5px; margin: 16px 0 20px; line-height: 1.55; max-width: 60ch; }
@@ -128,10 +129,10 @@ button.primary:disabled { background: #cbc6b8; border-color: #cbc6b8; color: #ff
 .lb-list .pct { font-weight: 700; }
 .lb-list .ch { color: var(--muted); width: 60px; text-align: right; font-weight: 500; }
 .lb-list li.me { background: var(--accent-soft); box-shadow: inset 0 0 0 1px rgba(255,84,54,0.3); }
-.lb-list li.me .nick::after { content: "you"; font-family: "Inter"; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--accent); background: #ffdcd3; padding: 2px 6px; border-radius: 20px; margin-left: 8px; }
+.lb-list li.me .nick::after { content: "you"; font-family: "Inter"; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: #fff; background: var(--accent-ink); padding: 2px 6px; border-radius: 20px; margin-left: 8px; }
 .lb-empty { color: var(--muted); justify-content: center; font-size: 13.5px; }
 
-.hint { font-size: 13px; color: #8c8678; line-height: 1.55; margin-top: 22px; }
+.hint { font-size: 13px; color: var(--muted); line-height: 1.55; margin-top: 22px; }
 
 .modal { position: fixed; inset: 0; display: none; align-items: center; justify-content: center; background: rgba(27,26,23,0.5); backdrop-filter: blur(3px); padding: 20px; }
 .modal.show { display: flex; }
