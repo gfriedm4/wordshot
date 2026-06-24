@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 560 160" role="img" aria-label="Wordshot">
+  <rect x="8" y="29" width="102" height="102" rx="26" fill="#1b1a17"/>
+  <g fill="none" stroke="#ff5436" stroke-width="9" stroke-linecap="round" stroke-linejoin="round" transform="translate(8 29) scale(0.1992)">
+    <path d="M150 214 V150 H214"/>
+    <path d="M298 150 H362 V214"/>
+    <path d="M150 298 V362 H214"/>
+    <path d="M298 362 H362 V298"/>
+  </g>
+  <circle cx="59" cy="80" r="9" fill="#ff5436"/>
+  <text x="138" y="102" font-family="'Space Grotesk', 'Inter', system-ui, sans-serif" font-size="74" font-weight="700" letter-spacing="-2" fill="#1b1a17">Wordshot</text>
+</svg>
