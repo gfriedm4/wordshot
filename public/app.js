@@ -190,15 +190,6 @@ function starCount(score) {
   return score >= 95 ? 5 : score >= 90 ? 4 : score >= 80 ? 3 : score >= 65 ? 2 : score >= 50 ? 1 : 0;
 }
 
-function starsFor(score) {
-  return score >= 95 ? "🟩🟩🟩🟩🟩"
-    : score >= 90 ? "🟩🟩🟩🟩⬜"
-    : score >= 80 ? "🟩🟩🟩⬜⬜"
-    : score >= 65 ? "🟩🟩⬜⬜⬜"
-    : score >= 50 ? "🟩⬜⬜⬜⬜"
-    : "⬜⬜⬜⬜⬜";
-}
-
 let lastResult = null; // for the share card
 
 async function showResult(svg, score, chars, name) {
@@ -206,7 +197,6 @@ async function showResult(svg, score, chars, name) {
   resultCanvas.style.display = "block";
   await drawSvg(rctx, svg);
   $("resultTag").textContent = `${chars} chars`;
-  const p = score.toFixed(1);
   lastResult = { score, chars, name };
   const filled = starCount(score);
   const squares = Array.from({ length: 5 }, (_, i) => `<i class="${i < filled ? "on" : ""}"></i>`).join("");
@@ -216,7 +206,6 @@ async function showResult(svg, score, chars, name) {
       <span class="meta">match · <b>${chars}</b> chars</span>
       <span class="squares">${squares}</span>
     </div>
-    <div class="share">Wordshot — ${name}\n${starsFor(score)}  ${p}%  ·  ${chars} chars</div>
     <button id="shareBtn">Share image</button>`;
   $("shareBtn").addEventListener("click", shareCard);
   countUp($("scoreNum"), score);

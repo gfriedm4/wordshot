@@ -141,7 +141,6 @@ button.primary:disabled { background: #cbc6b8; border-color: #cbc6b8; color: #ff
 .squares i:nth-child(4).on { animation-delay: .18s; }
 .squares i:nth-child(5).on { animation-delay: .24s; }
 @keyframes pop { 0% { transform: scale(0); } 70% { transform: scale(1.18); } 100% { transform: scale(1); } }
-.share { background: #f3f0e7; padding: 12px 14px; border-radius: 10px; font-family: ui-monospace, Menlo, monospace; font-size: 13px; white-space: pre; margin-top: 14px; display: inline-block; color: #45402f; }
 .err { color: #c0392b; font-size: 14px; font-weight: 500; }
 #shareBtn { display: inline-flex; align-items: center; gap: 8px; margin-top: 14px; }
 #shareBtn::before { content: "↗"; font-weight: 700; }
