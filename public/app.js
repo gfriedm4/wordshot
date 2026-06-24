@@ -246,11 +246,14 @@ function updateShotControls() {
   refreshPrompt(); // re-evaluate the banned-word lock on the live prompt
 }
 
-// Choose which shot to submit. No-op once locked.
+// Choose which shot to submit. The big "Your painting" board mirrors the pick,
+// so what's shown next to the target is always the shot you'll submit. No-op
+// once locked.
 function selectShot(i) {
   if (dayLocked || i < 0 || i >= dayShots.length) return;
   pickIdx = i;
   persistDay();
+  showShot(dayShots[i], i, false);
   renderShots();
   renderSubmitPanel();
 }
@@ -373,12 +376,15 @@ function scoreHalves(score) {
 let lastResult = null; // for the share card
 
 // Draw a shot onto the "Your painting" board and show its score line + share.
-async function showShot(shot) {
+// `idx` names which shot it is, so the big board can't be mistaken for a
+// different one than the tray pick. `animate` runs the count-up (skip it when
+// just switching selection, so flipping between shots stays snappy).
+async function showShot(shot, idx, animate = true) {
   const { svg, score, chars } = shot;
   $("resultPh").style.display = "none";
   resultCanvas.style.display = "block";
   await drawSvg(rctx, svg);
-  $("resultTag").textContent = `${chars} chars`;
+  $("resultTag").textContent = `Shot ${idx + 1} · ${chars} chars`;
   lastResult = { score, chars, name: current?.name };
   const halves = scoreHalves(score);
   const squares = Array.from({ length: 5 }, (_, i) => {
@@ -393,7 +399,8 @@ async function showShot(shot) {
     </div>
     <button id="shareBtn">Share image</button>`;
   $("shareBtn").addEventListener("click", shareCard);
-  countUp($("scoreNum"), score);
+  if (animate) countUp($("scoreNum"), score);
+  else $("scoreNum").textContent = `${score.toFixed(1)}%`;
 }
 
 const prefersReducedMotion = () =>
@@ -652,7 +659,8 @@ async function loadDay(date) {
   $("chars").textContent = "0";
 
   if (dayShots.length) {
-    await showShot(dayShots[dayShots.length - 1]); // show the latest painting
+    const idx = pickIdx != null ? pickIdx : dayShots.length - 1;
+    await showShot(dayShots[idx], idx, false); // show the selected shot
   } else {
     resultCanvas.style.display = "none";
     $("resultPh").style.display = "flex";
@@ -697,11 +705,12 @@ async function paint() {
       eligible: !!data.eligible,
     };
     dayShots.push(shot);
-    // Pre-select the best shot so far; the player can change it before locking.
-    pickIdx = defaultPick(dayShots);
+    // The shot you just painted becomes your current pick and fills the big
+    // board; tap any tray shot to switch before locking.
+    pickIdx = dayShots.length - 1;
     persistDay();
 
-    await showShot(shot);
+    await showShot(shot, pickIdx);
     renderShots();
     renderSubmitPanel();
     announce(`Shot ${dayShots.length}: scored ${data.score.toFixed(1)} percent using ${data.chars} characters.`);
