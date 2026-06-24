@@ -186,8 +186,11 @@ function setLocked(locked, note) {
   if (locked && note) $("prompt").placeholder = note;
 }
 
-function starCount(score) {
-  return score >= 95 ? 5 : score >= 90 ? 4 : score >= 80 ? 3 : score >= 65 ? 2 : score >= 50 ? 1 : 0;
+// Score bars in half-square units (0–10). Linear: pct/10 is a score out of 10,
+// each half-box worth one point, rounded to the nearest half. 92% -> 9 -> 4.5 boxes,
+// 95% -> 10 -> 5.0 boxes.
+function scoreHalves(score) {
+  return Math.max(0, Math.min(10, Math.round(score / 10)));
 }
 
 let lastResult = null; // for the share card
@@ -198,13 +201,16 @@ async function showResult(svg, score, chars, name) {
   await drawSvg(rctx, svg);
   $("resultTag").textContent = `${chars} chars`;
   lastResult = { score, chars, name };
-  const filled = starCount(score);
-  const squares = Array.from({ length: 5 }, (_, i) => `<i class="${i < filled ? "on" : ""}"></i>`).join("");
+  const halves = scoreHalves(score);
+  const squares = Array.from({ length: 5 }, (_, i) => {
+    const cls = halves >= (i + 1) * 2 ? "fill on" : halves >= i * 2 + 1 ? "fill half" : "";
+    return `<i class="${cls}"></i>`;
+  }).join("");
   $("result").innerHTML = `
     <div class="score">
       <span class="big" id="scoreNum">0.0%</span>
       <span class="meta">match · <b>${chars}</b> chars</span>
-      <span class="squares">${squares}</span>
+      <span class="squares" role="img" aria-label="${(halves / 2).toFixed(1)} out of 5">${squares}</span>
     </div>
     <button id="shareBtn">Share image</button>`;
   $("shareBtn").addEventListener("click", shareCard);
@@ -276,11 +282,21 @@ function buildShareCard() {
   x.fillStyle = "#1b1a17"; x.font = "600 32px 'Space Grotesk', system-ui, sans-serif";
   x.fillText(`${lastResult.chars} chars`, rx, top + 194);
   // Draw the 5 score squares directly (no emoji font dependency on the card).
-  const filled = starCount(lastResult.score);
+  // Half-filled boxes get a left-half green fill clipped to the rounded corners.
+  const halves = scoreHalves(lastResult.score);
   const sq = 38, gap = 10, sy = top + 224;
   for (let i = 0; i < 5; i++) {
-    x.fillStyle = i < filled ? "#2fa56a" : "#e7e2d5";
-    roundRect(x, rx + i * (sq + gap), sy, sq, sq, 7); x.fill();
+    const bx = rx + i * (sq + gap);
+    x.fillStyle = "#e7e2d5"; roundRect(x, bx, sy, sq, sq, 7); x.fill();
+    const full = halves >= (i + 1) * 2;
+    const half = !full && halves >= i * 2 + 1;
+    if (full || half) {
+      x.save();
+      roundRect(x, bx, sy, sq, sq, 7); x.clip();
+      x.fillStyle = "#2fa56a";
+      x.fillRect(bx, sy, half ? sq / 2 : sq, sq);
+      x.restore();
+    }
   }
   x.fillStyle = "#8c8678"; x.font = "24px Inter, system-ui, sans-serif";
   x.fillText(`as ${getNick() || "guest"}`, rx, top + 310);

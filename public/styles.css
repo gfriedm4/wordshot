@@ -69,9 +69,11 @@ header { display: flex; align-items: center; justify-content: space-between; gap
   width: 42px; height: 42px; border-radius: 11px; flex: none; background: var(--ink);
   display: grid; place-items: center;
 }
-.logo-dot { width: 16px; height: 16px; border-radius: 50%; background: var(--accent); }
+.logo-dot { width: 20px; height: 20px; border-radius: 50%; background: transparent; border: 3px solid var(--accent); position: relative; box-sizing: border-box; }
+.logo-dot::after { content: ""; position: absolute; inset: 0; margin: auto; width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
 .logo.big { width: 54px; height: 54px; border-radius: 14px; margin: 0 auto 14px; }
-.logo.big .logo-dot { width: 21px; height: 21px; }
+.logo.big .logo-dot { width: 26px; height: 26px; border-width: 4px; }
+.logo.big .logo-dot::after { width: 8px; height: 8px; }
 h1 { font-size: 25px; margin: 0; letter-spacing: -0.02em; font-weight: 700; }
 .brand-sub { font-size: 12.5px; color: var(--muted); margin-top: 2px; }
 .who { font-size: 13px; color: var(--muted); }
@@ -135,11 +137,13 @@ button.primary:disabled { background: #cbc6b8; border-color: #cbc6b8; color: #ff
 .score .meta b { color: var(--ink); }
 .squares { display: inline-flex; gap: 6px; margin-left: auto; }
 .squares i { width: 22px; height: 22px; border-radius: 5px; background: #e7e2d5; display: inline-block; }
-.squares i.on { background: var(--good); animation: pop .35s ease both; }
-.squares i:nth-child(2).on { animation-delay: .06s; }
-.squares i:nth-child(3).on { animation-delay: .12s; }
-.squares i:nth-child(4).on { animation-delay: .18s; }
-.squares i:nth-child(5).on { animation-delay: .24s; }
+.squares i.fill { animation: pop .35s ease both; }
+.squares i.on { background: var(--good); }
+.squares i.half { background: linear-gradient(90deg, var(--good) 0 50%, #e7e2d5 50% 100%); }
+.squares i:nth-child(2).fill { animation-delay: .06s; }
+.squares i:nth-child(3).fill { animation-delay: .12s; }
+.squares i:nth-child(4).fill { animation-delay: .18s; }
+.squares i:nth-child(5).fill { animation-delay: .24s; }
 @keyframes pop { 0% { transform: scale(0); } 70% { transform: scale(1.18); } 100% { transform: scale(1); } }
 .err { color: #c0392b; font-size: 14px; font-weight: 500; }
 #shareBtn { display: inline-flex; align-items: center; gap: 8px; margin-top: 14px; }
@@ -196,7 +200,7 @@ button.primary:disabled { background: #cbc6b8; border-color: #cbc6b8; color: #ff
    button nudge). The loading spinner keeps turning since it signals work in
    progress; the score count-up is short-circuited in JS. */
 @media (prefers-reduced-motion: reduce) {
-  .squares i.on { animation: none; }
+  .squares i.fill { animation: none; }
   .card { animation: none; }
   button:active { transform: none; }
 }
