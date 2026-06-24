@@ -242,6 +242,11 @@ function sweepScoreTokens(now) {
 // cleared wholesale when the ET day rolls over (practice on past days is uncapped
 // here — only IP and global ceilings apply to those).
 const SHOTS_PER_PUZZLE = Number(process.env.SHOTS_PER_PUZZLE) || 3;
+// Best-of-3 turns on at the start of this ET puzzle day; earlier days (today at
+// deploy time, and any past-day practice) stay one shot, so a puzzle already in
+// play doesn't change rules mid-flight. Dates are YYYY-MM-DD, lexicographic.
+const BEST_OF_3_DATE = process.env.BEST_OF_3_DATE || "2026-06-25";
+const shotsAllowed = (date) => (date >= BEST_OF_3_DATE ? SHOTS_PER_PUZZLE : 1);
 const shotsUsed = new Map();
 let shotsDayKey = "";
 function shotsFor(playerId, date) {
@@ -680,14 +685,18 @@ app.post("/api/generate", ...generateLimits, async (req, res) => {
 
   const eligible = date === todayStr(); // only today's day feeds the leaderboard
 
-  // Per-player shot cap on today's puzzle. Distinct prompts only: a repeat of a
-  // prompt you already fired returns the cached painting and doesn't cost a shot.
+  // Per-player shot cap on today's puzzle (date-gated: 3 from BEST_OF_3_DATE, 1
+  // before). Distinct prompts only: a repeat of a prompt you already fired
+  // returns the cached painting and doesn't cost a shot.
+  const cap = shotsAllowed(date);
   const key = cacheKey(puzzle.id, prompt);
   const used = eligible && playerId ? shotsFor(playerId, date) : null;
   const isRepeat = used ? used.has(key) : false;
-  if (used && !isRepeat && used.size >= SHOTS_PER_PUZZLE)
+  if (used && !isRepeat && used.size >= cap)
     return res.status(429).json({
-      error: `you've used all ${SHOTS_PER_PUZZLE} shots for today's puzzle`,
+      error: cap === 1
+        ? "you've already played today's puzzle"
+        : `you've used all ${cap} shots for today's puzzle`,
       shotsLeft: 0,
     });
 
@@ -713,7 +722,7 @@ app.post("/api/generate", ...generateLimits, async (req, res) => {
     const token = randomUUID();
     sweepScoreTokens(now);
     scoreTokens.set(token, { date, score, chars, exp: now + SCORE_TOKEN_TTL_MS });
-    const shotsLeft = used ? Math.max(0, SHOTS_PER_PUZZLE - used.size) : null;
+    const shotsLeft = used ? Math.max(0, cap - used.size) : null;
     return res.json({ svg, score, chars, token, eligible, shotsLeft });
   };
 

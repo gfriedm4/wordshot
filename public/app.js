@@ -157,7 +157,12 @@ async function saveNickFromModal() {
 // A day's saved record: { shots: Shot[], locked, pickIdx }, where a Shot is
 // { prompt, svg, score, chars, token, eligible }. pickIdx is the one shot the
 // player chose to submit.
-const SHOTS_MAX = 3;
+// Best-of-3 turns on for this ET puzzle day and later; earlier days stay one
+// shot so a puzzle already in play doesn't change rules mid-flight. Keep in sync
+// with BEST_OF_3_DATE in server.js.
+const BEST_OF_3_DATE = "2026-06-25";
+const maxShotsFor = (date) => (date >= BEST_OF_3_DATE ? 3 : 1);
+let shotsMax = 3; // shots allowed for the current day (set in loadDay)
 let FLOOR = 80; // brevity match floor, synced from the leaderboard payload
 let dayShots = []; // shots painted for the current day
 let dayLocked = false; // submitted/finalized for the current day
@@ -220,29 +225,31 @@ function drawSvg(ctx, svg) {
   });
 }
 
-// Paint button text + disabled state + the shots-left pips.
+// Paint button text + disabled state + the shots-left pips. Single-shot days
+// (pre-activation) read like the original one-shot game.
 function updateShotControls() {
   const btn = $("paint");
   const pips = $("shotPips");
   if (pips) {
-    pips.innerHTML = Array.from({ length: SHOTS_MAX }, (_, i) =>
+    // One pip per allowed shot; hidden entirely on single-shot days.
+    pips.innerHTML = shotsMax <= 1 ? "" : Array.from({ length: shotsMax }, (_, i) =>
       `<span class="pip${i < dayShots.length ? " spent" : ""}"></span>`).join("");
   }
   if (dayLocked) {
     $("prompt").disabled = true;
     btn.disabled = true;
-    btn.textContent = "Locked in";
+    btn.textContent = shotsMax <= 1 ? "Played" : "Locked in";
     return;
   }
-  if (dayShots.length >= SHOTS_MAX) {
+  if (dayShots.length >= shotsMax) {
     $("prompt").disabled = true;
     btn.disabled = true;
-    btn.textContent = "All 3 shots used";
+    btn.textContent = shotsMax <= 1 ? "Played" : `All ${shotsMax} shots used`;
     return;
   }
   $("prompt").disabled = false;
   btn.disabled = false;
-  btn.textContent = `Paint shot ${dayShots.length + 1} of ${SHOTS_MAX}`;
+  btn.textContent = shotsMax <= 1 ? "Paint it" : `Paint shot ${dayShots.length + 1} of ${shotsMax}`;
   refreshPrompt(); // re-evaluate the banned-word lock on the live prompt
 }
 
@@ -262,7 +269,8 @@ function selectShot(i) {
 // highlighted; after locking, only the submitted shot keeps the mark.
 function renderShots() {
   const tray = $("shotsTray");
-  if (!dayShots.length) { tray.hidden = true; return; }
+  // Single-shot days have nothing to choose between — no tray.
+  if (!dayShots.length || shotsMax <= 1) { tray.hidden = true; return; }
   tray.hidden = false;
   const hint = $("shotsHint");
   if (hint) hint.textContent = dayLocked ? "" : (dayShots.length > 1 ? "tap the one to submit" : "");
@@ -316,7 +324,8 @@ function renderShots() {
 // The submit button. Today only (past days can't reach the board).
 function renderSubmitPanel() {
   const panel = $("submitPanel");
-  if (!current || !current.today || !dayShots.length) { panel.hidden = true; return; }
+  // Single-shot days auto-submit on paint — no separate submit step.
+  if (!current || !current.today || !dayShots.length || shotsMax <= 1) { panel.hidden = true; return; }
   panel.hidden = false;
   const btn = $("lockBtn");
   btn.classList.toggle("done", dayLocked);
@@ -384,7 +393,7 @@ async function showShot(shot, idx, animate = true) {
   $("resultPh").style.display = "none";
   resultCanvas.style.display = "block";
   await drawSvg(rctx, svg);
-  $("resultTag").textContent = `Shot ${idx + 1} · ${chars} chars`;
+  $("resultTag").textContent = shotsMax > 1 ? `Shot ${idx + 1} · ${chars} chars` : `${chars} chars`;
   lastResult = { score, chars, name: current?.name };
   const halves = scoreHalves(score);
   const squares = Array.from({ length: 5 }, (_, i) => {
@@ -646,6 +655,14 @@ async function loadDay(date) {
   renderBanned(current.banned);
   $("bannedWarn").style.display = "none";
 
+  shotsMax = maxShotsFor(current.date); // 1 before activation, 3 from it
+  const tag = $("tagline");
+  if (tag) {
+    tag.textContent = shotsMax > 1
+      ? "Match the target using only words. You get three shots. The engine paints each one, then you pick your best to put on the board. You're scored on accuracy and how few words you used, so aim for a prompt that nails both. Some words are banned, so make them count."
+      : "Match the target using only words. Type a description, the engine paints it, and you're scored on accuracy and how few words you used. One shot per puzzle, and some words are banned, so make them count.";
+  }
+
   // Restore any saved shots for this day.
   const prior = getAttempt(current.date);
   dayShots = prior && prior.shots ? prior.shots.slice() : [];
@@ -673,7 +690,7 @@ async function loadDay(date) {
 }
 
 async function paint() {
-  if (!current || dayLocked || dayShots.length >= SHOTS_MAX) return;
+  if (!current || dayLocked || dayShots.length >= shotsMax) return;
   if (!getNick()) return showNickModal();
   const prompt = $("prompt").value.trim();
   if (!prompt) return;
@@ -714,6 +731,13 @@ async function paint() {
     renderShots();
     renderSubmitPanel();
     announce(`Shot ${dayShots.length}: scored ${data.score.toFixed(1)} percent using ${data.chars} characters.`);
+
+    // Single-shot days (pre-activation) behave like the original game: the one
+    // shot is the submission. Auto-submit today's; just lock practice days.
+    if (shotsMax <= 1) {
+      if (current.today) await lockIn();
+      else { dayLocked = true; persistDay(); }
+    }
   } catch (e) {
     $("result").innerHTML = `<span class="err">${e.message}</span>`;
     announce(`Something went wrong: ${e.message}`);
