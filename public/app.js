@@ -72,10 +72,57 @@ function getPlayerId() {
 const getNick = () => localStorage.getItem(NICK_KEY) || "";
 const setNick = (n) => localStorage.setItem(NICK_KEY, n);
 
+// --- Nickname modal: open/close with focus management ---
+let lastFocused = null;
+
+// Keep Tab inside the dialog and let Escape cancel it. Attached only while open.
+function onModalKeydown(e) {
+  if (e.key === "Escape") {
+    e.preventDefault();
+    closeNickModal();
+    return;
+  }
+  if (e.key !== "Tab") return;
+  const focusables = Array.from(
+    $("nickModal").querySelectorAll("input, button")
+  ).filter((el) => !el.disabled);
+  if (!focusables.length) return;
+  const first = focusables[0];
+  const last = focusables[focusables.length - 1];
+  if (e.shiftKey && document.activeElement === first) {
+    e.preventDefault();
+    last.focus();
+  } else if (!e.shiftKey && document.activeElement === last) {
+    e.preventDefault();
+    first.focus();
+  }
+}
+
 function showNickModal() {
+  lastFocused = document.activeElement;
   $("nickInput").value = getNick();
+  $("nickErr").style.display = "none";
+  // Take the rest of the page out of the tab order and the a11y tree.
+  const wrap = document.querySelector(".wrap");
+  if (wrap) {
+    wrap.setAttribute("inert", "");
+    wrap.setAttribute("aria-hidden", "true");
+  }
   $("nickModal").classList.add("show");
+  $("nickModal").addEventListener("keydown", onModalKeydown);
   $("nickInput").focus();
+}
+
+function closeNickModal() {
+  $("nickModal").classList.remove("show");
+  $("nickModal").removeEventListener("keydown", onModalKeydown);
+  const wrap = document.querySelector(".wrap");
+  if (wrap) {
+    wrap.removeAttribute("inert");
+    wrap.removeAttribute("aria-hidden");
+  }
+  if (lastFocused && lastFocused.focus) lastFocused.focus();
+  lastFocused = null;
 }
 async function saveNickFromModal() {
   const n = $("nickInput").value.trim().slice(0, 20);
@@ -102,7 +149,7 @@ async function saveNickFromModal() {
   }
   setNick(n);
   $("whoName").textContent = n;
-  $("nickModal").classList.remove("show");
+  closeNickModal();
   if (current) loadLeaderboard(current.date);
 }
 
@@ -175,8 +222,22 @@ async function showResult(svg, score, chars, name) {
   countUp($("scoreNum"), score);
 }
 
+const prefersReducedMotion = () =>
+  window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+// Announce a short, clean line to screen readers via the polite live region.
+// Kept separate from #result so the per-frame count-up animation never spams AT.
+function announce(msg) {
+  const el = $("srStatus");
+  if (el) el.textContent = msg;
+}
+
 // Animate the score number from 0 to its value for a little reveal.
 function countUp(el, target) {
+  if (prefersReducedMotion()) {
+    el.textContent = `${target.toFixed(1)}%`;
+    return;
+  }
   const dur = 650, start = performance.now();
   const tick = (now) => {
     const t = Math.min(1, (now - start) / dur);
@@ -358,6 +419,7 @@ async function paint() {
   const btn = $("paint");
   btn.disabled = true;
   $("result").innerHTML = `<span class="spinner"></span> painting…`;
+  announce("Painting your description…");
   try {
     const res = await fetch("/api/generate", {
       method: "POST",
@@ -375,6 +437,7 @@ async function paint() {
     });
     setLocked(true, "You've already played this one.");
     await showResult(data.svg, data.score, data.chars, current.name);
+    announce(`Scored ${data.score.toFixed(1)} percent match using ${data.chars} characters.`);
 
     // Only today's day is eligible; submit the token to claim a board row.
     if (data.eligible && data.token) {
@@ -391,6 +454,7 @@ async function paint() {
     }
   } catch (e) {
     $("result").innerHTML = `<span class="err">${e.message}</span>`;
+    announce(`Something went wrong: ${e.message}`);
     btn.disabled = false;
   }
 }

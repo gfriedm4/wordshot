@@ -33,6 +33,20 @@
   --shadow: 0 10px 30px -18px rgba(40, 34, 20, 0.5);
 }
 * { box-sizing: border-box; }
+
+/* Visually hidden but available to screen readers (labels, live-region status). */
+.sr-only {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+}
+
+/* Keyboard focus ring for everything interactive. Mouse clicks stay clean
+   via :focus-visible; keyboard users get a visible vermilion outline. */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
 html, body {
   margin: 0; padding: 0; min-height: 100%;
   color: var(--ink); background: var(--paper);
@@ -106,7 +120,7 @@ button.primary:disabled { background: #cbc6b8; border-color: #cbc6b8; color: #ff
 .charcount b { color: var(--ink); }
 
 .banned { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
-.banned-label { font-size: 12px; font-weight: 600; color: #8c8678; text-transform: uppercase; letter-spacing: 0.04em; }
+.banned-label { font-size: 12px; font-weight: 600; color: #726c5f; text-transform: uppercase; letter-spacing: 0.04em; }
 .banned-words { display: flex; gap: 6px; flex-wrap: wrap; }
 .banned-words .word {
   font-size: 13px; font-weight: 600; color: #b03a2e; background: #fbe9e7;
@@ -135,7 +149,7 @@ button.primary:disabled { background: #cbc6b8; border-color: #cbc6b8; color: #ff
 .spinner { display: inline-block; width: 15px; height: 15px; border: 2px solid #e3ddcd; border-top-color: var(--ink); border-radius: 50%; animation: spin .7s linear infinite; vertical-align: -2px; margin-right: 4px; }
 @keyframes spin { to { transform: rotate(360deg); } }
 
-.practice { font-size: 12px; font-weight: 600; color: #946a1e; background: #fbeecb; border: 1px solid #efdca0; padding: 4px 10px; border-radius: 20px; }
+.practice { font-size: 12px; font-weight: 600; color: #855d15; background: #fbeecb; border: 1px solid #efdca0; padding: 4px 10px; border-radius: 20px; }
 .countdown { font-size: 12px; font-weight: 600; color: #5d584c; background: #f1eee6; border: 1px solid #e2ddd0; padding: 4px 10px; border-radius: 20px; font-variant-numeric: tabular-nums; margin-left: auto; }
 .practice-note { margin-top: 10px; font-size: 13.5px; color: #786530; background: #fbf2d8; border: 1px solid #eedfac; border-radius: 11px; padding: 11px 14px; }
 
@@ -177,4 +191,13 @@ button.primary:disabled { background: #cbc6b8; border-color: #cbc6b8; color: #ff
   .boards { grid-template-columns: 1fr; }
   .wrap { margin: 10px; padding: 22px 16px 44px; }
   .score .big { font-size: 46px; }
+}
+
+/* Respect reduced-motion: drop the decorative reveals (square pop, modal rise,
+   button nudge). The loading spinner keeps turning since it signals work in
+   progress; the score count-up is short-circuited in JS. */
+@media (prefers-reduced-motion: reduce) {
+  .squares i.on { animation: none; }
+  .card { animation: none; }
+  button:active { transform: none; }
 }
