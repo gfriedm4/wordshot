@@ -79,12 +79,18 @@ h1 { font-size: 25px; margin: 0; letter-spacing: -0.02em; font-weight: 700; }
 .who a:hover { text-decoration: underline; }
 
 .tagline { color: #5d584c; font-size: 14.5px; margin: 16px 0 20px; line-height: 1.55; max-width: 60ch; }
+.frame-note { color: var(--muted); font-size: 13px; line-height: 1.5; margin: 12px 2px 0; text-align: center; }
 
 .boards { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
 .board { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; box-shadow: var(--shadow); }
 .board .label { font-size: 11.5px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted); padding: 11px 14px; border-bottom: 1px solid var(--line); display: flex; justify-content: space-between; align-items: center; }
 .canvas-wrap { position: relative; aspect-ratio: 1/1; background:
   repeating-conic-gradient(#f1eee4 0% 25%, #faf8f2 0% 50%) 50% / 26px 26px; }
+/* Hairline frame over the image so its edge reads even when the picture's own
+   background is white. Without it, white-on-white blends into the card and
+   players miss that the empty space is part of the target. */
+.canvas-wrap::after { content: ""; position: absolute; inset: 0; pointer-events: none;
+  box-shadow: inset 0 0 0 1px rgba(27, 26, 23, 0.22); }
 .board canvas { display: block; width: 100%; height: 100%; }
 .ph { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: #b6b1a1; font-size: 13.5px; text-align: center; padding: 12px; }
 
