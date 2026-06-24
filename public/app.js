@@ -153,17 +153,69 @@ async function saveNickFromModal() {
   if (current) loadLeaderboard(current.date);
 }
 
-// --- One-shot gate, keyed by day (date) ---
-const saveKey = (date) => `dp:v2:${date}`;
-const getAttempt = (date) => {
+// --- Best-of-3 state, keyed by day (date) ---
+// A day's saved record: { shots: Shot[], locked, accIdx, brevIdx }, where a Shot
+// is { prompt, svg, score, chars, token, eligible }. accIdx/brevIdx are the
+// shot indices the player chose for each board (brevIdx may be null).
+const SHOTS_MAX = 3;
+let FLOOR = 80; // brevity match floor, synced from the leaderboard payload
+let dayShots = []; // shots painted for the current day
+let dayLocked = false; // submitted/finalized for the current day
+let accPickIdx = null; // chosen shot index for the accuracy board
+let brevPickIdx = null; // chosen shot index for the brevity board
+
+const saveKey = (date) => `dp:v3:${date}`;
+const legacyKey = (date) => `dp:v2:${date}`;
+function getAttempt(date) {
   try {
-    return JSON.parse(localStorage.getItem(saveKey(date)) || "null");
+    const v3 = JSON.parse(localStorage.getItem(saveKey(date)) || "null");
+    if (v3 && Array.isArray(v3.shots)) return v3;
   } catch {
-    return null;
+    /* fall through to legacy */
   }
-};
+  // Migrate a pre-best-of-3 single play so an earlier shot today isn't lost.
+  try {
+    const v2 = JSON.parse(localStorage.getItem(legacyKey(date)) || "null");
+    if (v2 && v2.svg) {
+      return {
+        shots: [{ prompt: v2.prompt, svg: v2.svg, score: v2.score, chars: v2.chars, token: null, eligible: false }],
+        locked: true,
+        accIdx: 0,
+        brevIdx: v2.score >= FLOOR ? 0 : null,
+      };
+    }
+  } catch {
+    /* no usable prior */
+  }
+  return null;
+}
 const saveAttempt = (date, a) =>
   localStorage.setItem(saveKey(date), JSON.stringify(a));
+function persistDay() {
+  if (!current) return;
+  saveAttempt(current.date, { shots: dayShots, locked: dayLocked, accIdx: accPickIdx, brevIdx: brevPickIdx });
+}
+
+// Defaults the picker lands on: best accuracy = highest score (ties to fewer
+// chars); best brevity = fewest chars among shots that cleared the floor.
+function defaultAccIdx(shots) {
+  if (!shots.length) return null;
+  let best = 0;
+  for (let i = 1; i < shots.length; i++) {
+    const s = shots[i], b = shots[best];
+    if (s.score > b.score || (s.score === b.score && s.chars < b.chars)) best = i;
+  }
+  return best;
+}
+function defaultBrevIdx(shots) {
+  let best = null;
+  shots.forEach((s, i) => {
+    if (s.score < FLOOR) return;
+    if (best === null || s.chars < shots[best].chars || (s.chars === shots[best].chars && s.score > shots[best].score))
+      best = i;
+  });
+  return best;
+}
 
 function drawSvg(ctx, svg) {
   return new Promise((resolve, reject) => {
@@ -179,11 +231,152 @@ function drawSvg(ctx, svg) {
   });
 }
 
-function setLocked(locked, note) {
-  $("prompt").disabled = locked;
-  $("paint").disabled = locked;
-  $("paint").textContent = locked ? "Played" : "Paint it";
-  if (locked && note) $("prompt").placeholder = note;
+// Paint button text + disabled state + the shots-left pips.
+function updateShotControls() {
+  const btn = $("paint");
+  const pips = $("shotPips");
+  if (pips) {
+    pips.innerHTML = Array.from({ length: SHOTS_MAX }, (_, i) =>
+      `<span class="pip${i < dayShots.length ? " spent" : ""}"></span>`).join("");
+  }
+  if (dayLocked) {
+    $("prompt").disabled = true;
+    btn.disabled = true;
+    btn.textContent = "Locked in";
+    return;
+  }
+  if (dayShots.length >= SHOTS_MAX) {
+    $("prompt").disabled = true;
+    btn.disabled = true;
+    btn.textContent = "All 3 shots used";
+    return;
+  }
+  $("prompt").disabled = false;
+  btn.disabled = false;
+  btn.textContent = `Paint shot ${dayShots.length + 1} of ${SHOTS_MAX}`;
+  refreshPrompt(); // re-evaluate the banned-word lock on the live prompt
+}
+
+// Which board(s) a given shot index is currently assigned to.
+function pickLabel(i) {
+  const isAcc = i === accPickIdx, isBrev = i === brevPickIdx;
+  if (isAcc && isBrev) return { cls: "both", txt: "◎ ✂ both boards" };
+  if (isAcc) return { cls: "acc", txt: "◎ accuracy" };
+  if (isBrev) return { cls: "brev", txt: "✂ brevity" };
+  return { cls: "none", txt: "not sent" };
+}
+
+// The shots tray: one card/row per painted shot, marked with its board pick.
+function renderShots() {
+  const tray = $("shotsTray");
+  if (!dayShots.length) { tray.hidden = true; return; }
+  tray.hidden = false;
+  const list = $("shotList");
+  list.innerHTML = "";
+  dayShots.forEach((shot, i) => {
+    const pk = pickLabel(i);
+    const el = document.createElement("div");
+    el.className = "shot" + (pk.cls !== "none" ? ` pick-${pk.cls}` : "");
+
+    const thumb = document.createElement("div");
+    thumb.className = "thumb";
+    const cv = document.createElement("canvas");
+    cv.width = SIZE; cv.height = SIZE;
+    cv.setAttribute("role", "img");
+    cv.setAttribute("aria-label", `Shot ${i + 1}: ${shot.score.toFixed(1)} percent match, ${shot.chars} characters`);
+    thumb.appendChild(cv);
+
+    const body = document.createElement("div");
+    body.className = "shot-body";
+    body.innerHTML =
+      `<div class="shot-top"><span class="shot-n">Shot ${i + 1}</span>` +
+      `<span class="shot-pick ${pk.cls}">${pk.txt}</span></div>` +
+      `<div class="shot-prompt"></div>` +
+      `<div class="shot-nums">` +
+        `<span class="acc"><b>${shot.score.toFixed(0)}%</b> <span class="lbl">match</span></span>` +
+        `<span class="brev"><b>${shot.chars}</b> <span class="lbl">chars</span></span>` +
+      `</div>`;
+    body.querySelector(".shot-prompt").textContent = `“${shot.prompt}”`;
+
+    el.appendChild(thumb);
+    el.appendChild(body);
+    list.appendChild(el);
+    drawSvg(cv.getContext("2d"), shot.svg).catch(() => {});
+  });
+}
+
+// The "send to the boards" picker. Today only (past days can't be submitted).
+function renderSubmitPanel() {
+  const panel = $("submitPanel");
+  if (!current || !current.today || !dayShots.length) { panel.hidden = true; return; }
+  panel.hidden = false;
+
+  const accSel = $("accPick");
+  const brevSel = $("brevPick");
+
+  // Accuracy: any shot qualifies.
+  accSel.innerHTML = dayShots.map((s, i) =>
+    `<option value="${i}"${i === accPickIdx ? " selected" : ""}>Shot ${i + 1} · ${s.score.toFixed(0)}%</option>`).join("");
+
+  // Brevity: only shots that cleared the floor.
+  $("brevFloorNote").textContent = `· needs ≥${FLOOR}% match`;
+  const okBrev = dayShots.map((_, i) => i).filter((i) => dayShots[i].score >= FLOOR);
+  if (!okBrev.length) {
+    brevSel.innerHTML = `<option value="">no shot cleared ${FLOOR}%</option>`;
+    brevPickIdx = null;
+  } else {
+    brevSel.innerHTML = okBrev.map((i) =>
+      `<option value="${i}"${i === brevPickIdx ? " selected" : ""}>Shot ${i + 1} · ${dayShots[i].chars} chars</option>`).join("");
+  }
+
+  accSel.disabled = dayLocked;
+  brevSel.disabled = dayLocked || !okBrev.length;
+
+  accSel.onchange = () => { accPickIdx = Number(accSel.value); persistDay(); renderShots(); };
+  brevSel.onchange = () => { brevPickIdx = brevSel.value === "" ? null : Number(brevSel.value); persistDay(); renderShots(); };
+
+  const btn = $("lockBtn");
+  btn.disabled = dayLocked;
+  btn.textContent = dayLocked ? "Locked in ✓" : "Lock in my shots";
+}
+
+// Submit the two picks. Either token may be null (e.g. no qualifying brevity
+// shot); the server takes whichever it's given.
+async function lockIn() {
+  if (!current || !current.today || dayLocked || !dayShots.length) return;
+  const accShot = accPickIdx != null ? dayShots[accPickIdx] : null;
+  const brevShot = brevPickIdx != null ? dayShots[brevPickIdx] : null;
+  const accToken = accShot && accShot.eligible ? accShot.token : null;
+  const brevToken = brevShot && brevShot.eligible ? brevShot.token : null;
+
+  const btn = $("lockBtn");
+  // Nothing live to send (tokens expired after an hour idle) — lock locally.
+  if (!accToken && !brevToken) {
+    dayLocked = true; persistDay(); renderSubmitPanel(); renderShots(); updateShotControls();
+    return;
+  }
+  btn.disabled = true; btn.textContent = "Locking in…";
+  try {
+    const r = await fetch("/api/leaderboard/submit", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ accToken, brevToken, nickname: getNick(), playerId: getPlayerId() }),
+    });
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.error || `error ${r.status}`);
+    dayLocked = true;
+    persistDay();
+    applyBoards(data);
+    renderShots();
+    renderSubmitPanel();
+    updateShotControls();
+    announce("Shots locked in. Your scores are on the board.");
+  } catch (e) {
+    btn.disabled = false; btn.textContent = "Lock in my shots";
+    const note = $("submitPanel").querySelector(".panel-note");
+    if (note) note.textContent = e.message;
+    announce(`Couldn't lock in: ${e.message}`);
+  }
 }
 
 // Score bars in half-square units (0–10). Linear: pct/10 is a score out of 10,
@@ -195,12 +388,14 @@ function scoreHalves(score) {
 
 let lastResult = null; // for the share card
 
-async function showResult(svg, score, chars, name) {
+// Draw a shot onto the "Your painting" board and show its score line + share.
+async function showShot(shot) {
+  const { svg, score, chars } = shot;
   $("resultPh").style.display = "none";
   resultCanvas.style.display = "block";
   await drawSvg(rctx, svg);
   $("resultTag").textContent = `${chars} chars`;
-  lastResult = { score, chars, name };
+  lastResult = { score, chars, name: current?.name };
   const halves = scoreHalves(score);
   const squares = Array.from({ length: 5 }, (_, i) => {
     const cls = halves >= (i + 1) * 2 ? "fill on" : halves >= i * 2 + 1 ? "fill half" : "";
@@ -358,6 +553,7 @@ function renderBoard(elId, rows, emptyMsg) {
 }
 
 function applyBoards(data) {
+  if (data && typeof data.floor === "number") FLOOR = data.floor;
   $("lbFloor").textContent = `· ≥${data.floor}% to qualify`;
   renderBoard("lbAccuracy", data.accuracy, "No scores yet. Be first.");
   renderBoard("lbBrevity", data.brevity, "No qualifying scores yet.");
@@ -459,26 +655,35 @@ async function loadDay(date) {
   renderBanned(current.banned);
   $("bannedWarn").style.display = "none";
 
+  // Restore any saved shots for this day.
   const prior = getAttempt(current.date);
-  if (prior) {
-    $("prompt").value = prior.prompt;
-    $("chars").textContent = prior.chars;
-    setLocked(true, "You've already played this one.");
-    await showResult(prior.svg, prior.score, prior.chars, name);
+  dayShots = prior && prior.shots ? prior.shots.slice() : [];
+  dayLocked = !!(prior && prior.locked);
+  accPickIdx = prior && prior.accIdx != null ? prior.accIdx : defaultAccIdx(dayShots);
+  brevPickIdx = prior && prior.brevIdx !== undefined ? prior.brevIdx : defaultBrevIdx(dayShots);
+  // Guard against stale indices from an older save.
+  if (accPickIdx != null && accPickIdx >= dayShots.length) accPickIdx = defaultAccIdx(dayShots);
+  if (brevPickIdx != null && brevPickIdx >= dayShots.length) brevPickIdx = defaultBrevIdx(dayShots);
+
+  $("prompt").value = "";
+  $("prompt").placeholder = "e.g. a red circle in the middle on white";
+  $("chars").textContent = "0";
+
+  if (dayShots.length) {
+    await showShot(dayShots[dayShots.length - 1]); // show the latest painting
   } else {
-    $("prompt").value = "";
-    $("prompt").placeholder = "e.g. a red circle in the middle on white";
-    $("chars").textContent = "0";
-    setLocked(false);
     resultCanvas.style.display = "none";
     $("resultPh").style.display = "flex";
     $("resultTag").textContent = "";
     $("result").innerHTML = "";
   }
+  renderShots();
+  renderSubmitPanel();
+  updateShotControls();
 }
 
 async function paint() {
-  if (!current || getAttempt(current.date)) return;
+  if (!current || dayLocked || dayShots.length >= SHOTS_MAX) return;
   if (!getNick()) return showNickModal();
   const prompt = $("prompt").value.trim();
   if (!prompt) return;
@@ -501,33 +706,30 @@ async function paint() {
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || `error ${res.status}`);
 
-    saveAttempt(current.date, {
+    const shot = {
       prompt,
       svg: data.svg,
       score: data.score,
       chars: data.chars,
-    });
-    setLocked(true, "You've already played this one.");
-    await showResult(data.svg, data.score, data.chars, current.name);
-    announce(`Scored ${data.score.toFixed(1)} percent match using ${data.chars} characters.`);
+      token: data.token || null,
+      eligible: !!data.eligible,
+    };
+    dayShots.push(shot);
+    // Re-point the defaults at the best of the shots so far; the player can still
+    // override in the picker before locking.
+    accPickIdx = defaultAccIdx(dayShots);
+    brevPickIdx = defaultBrevIdx(dayShots);
+    persistDay();
 
-    // Only today's day is eligible; submit the token to claim a board row.
-    if (data.eligible && data.token) {
-      const r = await fetch("/api/leaderboard/submit", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          token: data.token,
-          nickname: getNick(),
-          playerId: getPlayerId(),
-        }),
-      });
-      if (r.ok) applyBoards(await r.json());
-    }
+    await showShot(shot);
+    renderShots();
+    renderSubmitPanel();
+    announce(`Shot ${dayShots.length}: scored ${data.score.toFixed(1)} percent using ${data.chars} characters.`);
   } catch (e) {
     $("result").innerHTML = `<span class="err">${e.message}</span>`;
     announce(`Something went wrong: ${e.message}`);
-    btn.disabled = false;
+  } finally {
+    updateShotControls();
   }
 }
 
@@ -597,6 +799,7 @@ async function init() {
   const ta = $("prompt");
   ta.addEventListener("input", refreshPrompt);
   $("paint").addEventListener("click", paint);
+  $("lockBtn").addEventListener("click", lockIn);
   ta.addEventListener("keydown", (e) => {
     if ((e.metaKey || e.ctrlKey) && e.key === "Enter") paint();
   });
