@@ -374,6 +374,72 @@ async function loadLeaderboard(date) {
   }
 }
 
+// Winning shots for a locked day: top 3 paintings + the prompts behind them.
+// Hidden on today (would leak live answers) and on days with no winners.
+async function loadShowcase(date, isToday) {
+  const section = $("showcase");
+  if (isToday) {
+    section.style.display = "none";
+    return;
+  }
+  let data;
+  try {
+    data = await (await fetch(`/api/showcase/${date}`)).json();
+  } catch {
+    section.style.display = "none";
+    return;
+  }
+  const winners = (data && data.winners) || [];
+  if (!winners.length) {
+    section.style.display = "none";
+    return;
+  }
+  $("showcaseDay").textContent = `· ${date}`;
+  const grid = $("showcaseGrid");
+  grid.innerHTML = "";
+  winners.forEach((w, i) => {
+    const card = document.createElement("div");
+    card.className = `showcase-card rank-${i + 1}`;
+
+    const frame = document.createElement("div");
+    frame.className = "showcase-frame";
+    if (w.svg) {
+      const cv = document.createElement("canvas");
+      cv.width = SIZE;
+      cv.height = SIZE;
+      cv.className = "showcase-canvas";
+      cv.setAttribute("role", "img");
+      cv.setAttribute("aria-label", `${w.nickname}'s painting, ${w.score.toFixed(1)}% match`);
+      frame.appendChild(cv);
+      drawSvg(cv.getContext("2d"), w.svg).catch(() => {});
+    } else {
+      const ph = document.createElement("div");
+      ph.className = "showcase-ph";
+      ph.textContent = "no image saved for this day";
+      frame.appendChild(ph);
+    }
+    card.appendChild(frame);
+
+    const meta = document.createElement("div");
+    meta.className = "showcase-meta";
+    meta.innerHTML =
+      `<span class="rank">${i + 1}</span>` +
+      `<span class="nick"></span>` +
+      `<span class="pct">${w.score.toFixed(1)}%</span>` +
+      `<span class="ch">${w.chars} ch</span>`;
+    meta.querySelector(".nick").textContent = w.nickname;
+    card.appendChild(meta);
+
+    const quote = document.createElement("p");
+    quote.className = "showcase-prompt";
+    quote.textContent = w.prompt ? `“${w.prompt}”` : "(prompt not recorded)";
+    card.appendChild(quote);
+
+    grid.appendChild(card);
+  });
+  section.style.display = "block";
+}
+
 async function loadDay(date) {
   current = days.find((d) => d.date === date) || days[0];
   const { name, today } = current;
@@ -385,6 +451,7 @@ async function loadDay(date) {
   $("practiceNote").style.display = today ? "none" : "block";
   renderCountdown();
   loadLeaderboard(current.date);
+  loadShowcase(current.date, today);
 
   const svg = await (await fetch(`/api/target/${current.puzzleId}`)).text();
   await drawSvg(tctx, svg);
@@ -429,7 +496,7 @@ async function paint() {
     const res = await fetch("/api/generate", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ prompt, date: current.date }),
+      body: JSON.stringify({ prompt, date: current.date, playerId: getPlayerId() }),
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || `error ${res.status}`);

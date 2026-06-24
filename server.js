@@ -1,5 +1,5 @@
 import express from "express";
-import { readFile, writeFile } from "node:fs/promises";
+import { readFile, writeFile, appendFile } from "node:fs/promises";
 import { existsSync, mkdirSync } from "node:fs";
 import { createHash, randomUUID, timingSafeEqual } from "node:crypto";
 import { fileURLToPath } from "node:url";
@@ -130,6 +130,21 @@ const cacheKey = (puzzleId, prompt) =>
 // measured. Persistence is a flat JSON file, fine at prototype scale.
 const DATA_DIR = join(__dirname, "data");
 const LB_PATH = join(DATA_DIR, "leaderboard.json");
+// Append-only play log: one JSON line per painting the engine produced, win or
+// not, submitted to the board or not. This is the model dataset — every
+// (target, prompt, score, image) the game has ever generated — and the source
+// the "yesterday's top prompts" display reads from. Captured at generate time
+// because that's the only point the prompt and svg exist together; the
+// leaderboard only ever kept the score. Whatever isn't written here is lost.
+const PLAYS_PATH = join(DATA_DIR, "plays.jsonl");
+async function logPlay(record) {
+  try {
+    mkdirSync(DATA_DIR, { recursive: true });
+    await appendFile(PLAYS_PATH, JSON.stringify(record) + "\n");
+  } catch (e) {
+    console.warn(`couldn't write play log: ${e.message}`);
+  }
+}
 const LB_TOP = 10;
 const NICK_MAX = 20;
 // The brevity board only counts attempts that cleared this match %. Without a
@@ -675,6 +690,7 @@ function sanitizeSvg(raw) {
 app.post("/api/generate", ...generateLimits, async (req, res) => {
   const prompt = (req.body?.prompt || "").trim();
   const date = String(req.body?.date || todayStr());
+  const playerId = String(req.body?.playerId || "");
   const puzzle = puzzleForDate(date);
   if (!puzzle) return res.status(400).json({ error: "no puzzle for that day" });
   const target = targetPixels.get(puzzle.id);
@@ -722,10 +738,24 @@ app.post("/api/generate", ...generateLimits, async (req, res) => {
 
   // Mint a one-time token bound to this server-measured score + day, so the
   // board submission can't lie about the number or backdoor a past day.
-  const reply = (svg, score) => {
+  const reply = (svg, score, cached) => {
     const chars = prompt.length;
-    const token = randomUUID();
     const now = Date.now();
+    // Record the play before we answer. Fire-and-forget so the append never
+    // adds latency to the render round-trip; logPlay swallows its own errors.
+    logPlay({
+      at: new Date(now).toISOString(),
+      date,
+      puzzleId: puzzle.id,
+      target: puzzle.name, // what they were trying to draw — the training label
+      playerId,
+      prompt,
+      chars,
+      score,
+      cached,
+      svg,
+    });
+    const token = randomUUID();
     sweepScoreTokens(now);
     scoreTokens.set(token, { date, score, chars, exp: now + SCORE_TOKEN_TTL_MS });
     return res.json({ svg, score, chars, token, eligible });
@@ -733,7 +763,7 @@ app.post("/api/generate", ...generateLimits, async (req, res) => {
 
   const key = cacheKey(puzzle.id, prompt);
   const hit = resultCache.get(key);
-  if (hit) return reply(hit.svg, hit.score); // cache hit is free, no budget spent
+  if (hit) return reply(hit.svg, hit.score, true); // cache hit is free, no budget spent
 
   // Past this point we pay Gemini. Stop here if the global daily ceiling is spent.
   if (!globalRenderBudgetOk())
@@ -744,7 +774,7 @@ app.post("/api/generate", ...generateLimits, async (req, res) => {
     const svg = await generateSvg(prompt);
     const score = Math.round(scoreMatch(target, rasterize(svg)) * 10) / 10;
     resultCache.set(key, { svg, score });
-    reply(svg, score);
+    reply(svg, score, false);
   } catch (e) {
     const msg = String(e.message || e);
     if (msg.startsWith("BLOCKED:"))
@@ -765,6 +795,61 @@ app.get("/api/nickname/suggest", writeLimit, (req, res) => {
 // Read a day's two boards. ?me=<playerId> flags the caller's own rows.
 app.get("/api/leaderboard/:date", (req, res) => {
   res.json(boardsFor(req.params.date, String(req.query.me || "")));
+});
+
+// Showcase: the top 3 accuracy finishers for a LOCKED (past) day, each shown
+// with the prompt they typed and the painting the engine drew. Built by joining
+// the trusted board (server-minted scores) to that player's best play in the
+// append-only log — so the picture and words come from plays.jsonl, the number
+// from the leaderboard. Today is withheld: surfacing live winners would hand out
+// working prompts for the puzzle still in play.
+async function bestPlaysByPlayer(date) {
+  const best = new Map(); // playerId -> { prompt, svg, score, chars }
+  if (!existsSync(PLAYS_PATH)) return best;
+  let raw;
+  try {
+    raw = await readFile(PLAYS_PATH, "utf8");
+  } catch {
+    return best;
+  }
+  for (const line of raw.split("\n")) {
+    if (!line) continue;
+    let p;
+    try {
+      p = JSON.parse(line);
+    } catch {
+      continue; // skip a torn line rather than fail the whole request
+    }
+    if (p.date !== date || !p.playerId) continue;
+    const cur = best.get(p.playerId);
+    // Match the board's tiebreak: higher score wins, then fewer chars.
+    if (!cur || p.score > cur.score || (p.score === cur.score && p.chars < cur.chars))
+      best.set(p.playerId, { prompt: p.prompt, svg: p.svg, score: p.score, chars: p.chars });
+  }
+  return best;
+}
+
+app.get("/api/showcase/:date", async (req, res) => {
+  const date = req.params.date;
+  if (date === todayStr()) return res.json({ live: true, winners: [] });
+  const rows = (leaderboard[date] || [])
+    .slice()
+    .sort((a, b) => b.score - a.score || a.chars - b.chars || a.at - b.at)
+    .slice(0, 3);
+  if (!rows.length) return res.json({ live: false, winners: [] });
+  const plays = await bestPlaysByPlayer(date);
+  const winners = rows.map((r) => {
+    const play = plays.get(r.playerId);
+    return {
+      nickname: r.nickname,
+      score: r.score,
+      chars: r.chars,
+      // null when this day predates capture — render the row, just no picture.
+      prompt: play?.prompt ?? null,
+      svg: play?.svg ?? null,
+    };
+  });
+  res.json({ live: false, winners });
 });
 
 // Redeem a score token into a leaderboard row, keyed by playerId. Only today's

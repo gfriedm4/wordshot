@@ -83,6 +83,7 @@
         <span class="charcount"><b id="chars">0</b> chars</span>
         <span class="banned-warn" id="bannedWarn" role="status" aria-live="polite" style="display:none"></span>
       </div>
+      <p class="data-note">We save your prompts and paintings to run the leaderboard and improve Wordshot.</p>
     </div>
 
     <div class="result" id="result"></div>
@@ -102,6 +103,12 @@
         <ol id="lbBrevity" class="lb-list"><li class="lb-empty">No qualifying scores yet.</li></ol>
       </div>
     </div>
+
+    <section class="showcase" id="showcase" style="display:none">
+      <h2 class="lb-title">Winning shots <span class="sub" id="showcaseDay"></span></h2>
+      <p class="showcase-note">The top 3 paintings for this day, and the words that made them.</p>
+      <div class="showcase-grid" id="showcaseGrid"></div>
+    </section>
 
     <p class="hint">
       The engine paints flat shapes only: circles, squares, triangles, stars. It never sees the target, just your words. Watch the banned list, those words are off-limits.

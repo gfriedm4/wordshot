@@ -180,6 +180,29 @@ button.primary:disabled { background: #cbc6b8; border-color: #cbc6b8; color: #ff
 .lb-list li.me .nick::after { content: "you"; font-family: "Inter"; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: #fff; background: var(--accent-ink); padding: 2px 6px; border-radius: 20px; margin-left: 8px; }
 .lb-empty { color: var(--muted); justify-content: center; font-size: 13.5px; }
 
+.data-note { font-size: 12px; color: var(--muted); line-height: 1.5; margin: 10px 2px 0; }
+
+/* Showcase: top 3 paintings for a locked day, with the prompts behind them. */
+.showcase { margin-top: 30px; }
+.showcase-note { font-size: 13px; color: var(--muted); margin: 2px 2px 14px; }
+.showcase-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+.showcase-card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; box-shadow: var(--shadow); display: flex; flex-direction: column; }
+.showcase-card.rank-1 { border-color: var(--gold); }
+.showcase-card.rank-2 { border-color: var(--silver); }
+.showcase-card.rank-3 { border-color: var(--bronze); }
+.showcase-frame { aspect-ratio: 1/1; padding: 12px; border-bottom: 1px solid var(--line); }
+.showcase-canvas, .showcase-ph { width: 100%; height: 100%; border-radius: 4px; box-shadow: inset 0 0 0 1px var(--line); display: block; }
+.showcase-ph { display: grid; place-items: center; text-align: center; color: var(--muted); font-size: 12px; background: #f6f3ea; }
+.showcase-meta { display: flex; align-items: center; gap: 8px; padding: 10px 12px 4px; font-size: 13.5px; }
+.showcase-meta .rank { width: 22px; height: 22px; flex: none; display: grid; place-items: center; font-size: 11px; font-weight: 700; color: var(--muted); background: #f0ece0; border-radius: 7px; }
+.showcase-card.rank-1 .showcase-meta .rank { background: var(--gold); color: #5a4500; }
+.showcase-card.rank-2 .showcase-meta .rank { background: var(--silver); color: #3a3a30; }
+.showcase-card.rank-3 .showcase-meta .rank { background: var(--bronze); color: #3f2510; }
+.showcase-meta .nick { flex: 1; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.showcase-meta .pct { font-weight: 700; }
+.showcase-meta .ch { color: var(--muted); font-weight: 500; }
+.showcase-prompt { margin: 4px 12px 14px; font-size: 13.5px; line-height: 1.45; color: var(--ink); }
+
 .hint { font-size: 13px; color: var(--muted); line-height: 1.55; margin-top: 22px; }
 
 .modal { position: fixed; inset: 0; display: none; align-items: center; justify-content: center; background: rgba(27,26,23,0.5); backdrop-filter: blur(3px); padding: 20px; }
@@ -195,9 +218,18 @@ button.primary:disabled { background: #cbc6b8; border-color: #cbc6b8; color: #ff
 .nick-err { color: #c0392b; font-size: 13px; margin: -4px 0 12px; }
 
 @media (max-width: 600px) {
-  .boards { grid-template-columns: 1fr; }
+  /* Keep target and painting side-by-side on mobile (not stacked) so players
+     can compare them at a glance without scrolling. Tighten the gutter and
+     trim the canvas mat so two square canvases still fit a narrow phone. */
+  .boards { gap: 10px; }
+  .canvas-wrap { padding: 10px; }
+  .ph { inset: 10px; font-size: 12.5px; }
+  .board .label { padding: 9px 11px; }
   .wrap { margin: 10px; padding: 22px 16px 44px; }
   .score .big { font-size: 46px; }
+  /* Stack the winning shots on phones so the prompt under each stays readable;
+     three across would crush both the painting and the words. */
+  .showcase-grid { grid-template-columns: 1fr; gap: 12px; }
 }
 
 /* Respect reduced-motion: drop the decorative reveals (square pop, modal rise,
