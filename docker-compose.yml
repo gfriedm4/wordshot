@@ -13,9 +13,9 @@ services:
     expose:
       - "3000"
 
-  # Privacy-friendly analytics, self-hosted. Caddy serves it first-party under
-  # /stats (see Caddyfile) so the tracker is same-origin and the data never
-  # leaves this box. Lightweight: Umami (Node) + its own Postgres, no ClickHouse.
+  # Privacy-friendly analytics, self-hosted. Caddy serves it at stats.wordshot.art
+  # (see Caddyfile); the data never leaves this box. Lightweight: Umami (Node) +
+  # its own Postgres, no ClickHouse.
   umami:
     image: ghcr.io/umami-software/umami:postgresql-latest
     restart: unless-stopped
@@ -23,7 +23,6 @@ services:
       - DATABASE_URL=postgresql://umami:${UMAMI_DB_PASSWORD}@umami-db:5432/umami
       - DATABASE_TYPE=postgresql
       - APP_SECRET=${UMAMI_APP_SECRET}
-      - BASE_PATH=/stats
     depends_on:
       umami-db:
         condition: service_healthy

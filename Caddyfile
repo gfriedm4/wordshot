@@ -3,34 +3,31 @@
 wordshot.art {
 	encode zstd gzip
 
-	# Self-hosted Umami analytics, first-party under /stats. Because it's same-origin
-	# the tracker (/stats/script.js -> /stats/api/send) satisfies the game's tight
-	# CSP with no exceptions. This block gets Caddy's default headers, not the game's
-	# CSP, so Umami's own dashboard UI renders. Umami serves under this path via its
-	# BASE_PATH=/stats env (see docker-compose.yml).
-	handle /stats* {
-		reverse_proxy umami:3000
+	# Security headers. The CSP is tight: scripts/fonts/connections are same-origin
+	# only, with the one exception of stats.wordshot.art so the Umami tracker can
+	# load and send beacons. Styles allow 'unsafe-inline' for the inline style=""
+	# attributes in the markup; img allows data: for the SVG-to-canvas render in app.js.
+	header {
+		Content-Security-Policy "default-src 'self'; script-src 'self' https://stats.wordshot.art; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self' https://stats.wordshot.art; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; object-src 'none'"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		X-Frame-Options "DENY"
+		-Server
 	}
 
-	# The game itself, plus its security headers. The CSP is tight: scripts/fonts/
-	# connections are same-origin only; styles allow 'unsafe-inline' for the inline
-	# style="" attributes in the markup; img allows data: for the SVG-to-canvas
-	# render in app.js.
-	handle {
-		header {
-			Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; object-src 'none'"
-			X-Content-Type-Options "nosniff"
-			Referrer-Policy "strict-origin-when-cross-origin"
-			X-Frame-Options "DENY"
-			-Server
-		}
+	# Long cache for the immutable self-hosted fonts; everything else stays default.
+	@fonts path /fonts/*
+	header @fonts Cache-Control "public, max-age=31536000, immutable"
 
-		# Long cache for the immutable self-hosted fonts; everything else stays default.
-		@fonts path /fonts/*
-		header @fonts Cache-Control "public, max-age=31536000, immutable"
+	reverse_proxy wordshot:3000
+}
 
-		reverse_proxy wordshot:3000
-	}
+# Self-hosted Umami analytics on its own subdomain so it serves at root (the
+# prebuilt image can't run under a subpath: BASE_PATH is build-time only). Caddy
+# auto-fetches a cert once stats.wordshot.art's A record points at this box.
+stats.wordshot.art {
+	encode zstd gzip
+	reverse_proxy umami:3000
 }
 
 www.wordshot.art {
