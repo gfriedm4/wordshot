@@ -5,11 +5,12 @@ both work). The app + Caddy (automatic HTTPS) run via Docker Compose.
 
 ## One-time setup
 
-1. **DNS** — at your registrar, point `wordshot.art` (and `www`) at the server's
-   public IP:
+1. **DNS** — at your registrar, point `wordshot.art` (and `www`, and `stats` for
+   analytics) at the server's public IP:
    ```
-   A   wordshot.art      <server-ip>
-   A   www.wordshot.art  <server-ip>
+   A   wordshot.art        <server-ip>
+   A   www.wordshot.art    <server-ip>
+   A   stats.wordshot.art  <server-ip>
    ```
 
 2. **Server** — install Docker (`curl -fsSL https://get.docker.com | sh`), then:
@@ -31,19 +32,19 @@ the `wordshot-data` Docker volume, so it survives restarts and rebuilds.
 
 ## Analytics (Umami)
 
-Self-hosted, privacy-friendly, cookieless. Served first-party at
-`https://wordshot.art/stats` so the tracker is same-origin (no third-party
-requests, satisfies the game's CSP) and all data stays in the `umami-db-data`
-volume on this box.
+Self-hosted, privacy-friendly, cookieless. Served at `https://stats.wordshot.art`
+(its own subdomain because the prebuilt Umami image only supports a subpath at
+build time, not runtime). All data stays in the `umami-db-data` volume on this box.
 
-One-time, after the first deploy:
+One-time, after the first deploy (and once the `stats` A record resolves so Caddy
+can issue its cert):
 
-1. Open `https://wordshot.art/stats` and log in with the default
+1. Open `https://stats.wordshot.art` and log in with the default
    `admin` / `umami`. **Change the password immediately** (Settings → Profile).
 2. Settings → Websites → Add. Name it `Wordshot`, domain `wordshot.art`.
 3. Copy the generated **Website ID** (a UUID). The tracking snippet in
    `public/index.html` reads it from `data-website-id` — drop the UUID in there,
-   commit, and the next deploy starts collecting.
+   uncomment it, commit, and the next deploy starts collecting.
 
 The two `UMAMI_*` secrets live only in `.env` on the server, never in the repo.
 
