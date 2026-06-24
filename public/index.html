@@ -47,7 +47,7 @@
 
     <main>
     <p class="tagline">
-      Match the target using only words. You get three shots. The engine paints each one, then you pick which shot to send to each board: accuracy or brevity. Go tight for one, detailed for the other, or let a single shot carry both. Some words are banned, so make them count.
+      Match the target using only words. You get three shots. The engine paints each one, then you pick your best to put on the board. You're scored on accuracy and how few words you used, so aim for a prompt that nails both. Some words are banned, so make them count.
     </p>
 
     <div class="boards">
@@ -91,32 +91,13 @@
     <div id="srStatus" class="sr-only" role="status" aria-live="polite"></div>
 
     <section class="shots-tray" id="shotsTray" hidden>
-      <div class="section-label"><span role="heading" aria-level="2">Your shots</span></div>
-      <div class="shotlist" id="shotList"></div>
+      <div class="section-label"><span role="heading" aria-level="2">Your shots</span> <span class="label-hint" id="shotsHint"></span></div>
+      <div class="shotlist" id="shotList" role="radiogroup" aria-label="Choose which shot to submit"></div>
     </section>
 
     <section class="submit-panel" id="submitPanel" hidden>
-      <div class="section-label"><span role="heading" aria-level="2">Send to the boards</span></div>
-      <div class="pick-row">
-        <span class="pick-icon acc" aria-hidden="true">◎</span>
-        <div class="pick-txt">
-          <div class="t">Best match</div>
-          <div class="s">Your highest-accuracy shot.</div>
-        </div>
-        <label class="sr-only" for="accPick">Shot to send to the best match board</label>
-        <select class="pick-sel acc" id="accPick"></select>
-      </div>
-      <div class="pick-row">
-        <span class="pick-icon brev" aria-hidden="true">✂</span>
-        <div class="pick-txt">
-          <div class="t">Shortest prompt <span class="floor-note" id="brevFloorNote"></span></div>
-          <div class="s">Your fewest-character shot that still matched.</div>
-        </div>
-        <label class="sr-only" for="brevPick">Shot to send to the shortest prompt board</label>
-        <select class="pick-sel brev" id="brevPick"></select>
-      </div>
-      <button class="lockbtn" id="lockBtn">Lock in my shots</button>
-      <p class="panel-note">Send different shots to each board, or the same one to both. Once locked, today's puzzle is done.</p>
+      <button class="lockbtn" id="lockBtn" disabled>Pick a shot to submit</button>
+      <p class="panel-note">Pick the one shot that best balances accuracy and brevity. One submission per day. A single combined-score board is coming.</p>
     </section>
 
     <h2 class="lb-title">Leaderboard <span class="sub" id="lbPuzzle"></span></h2>

@@ -154,15 +154,14 @@ async function saveNickFromModal() {
 }
 
 // --- Best-of-3 state, keyed by day (date) ---
-// A day's saved record: { shots: Shot[], locked, accIdx, brevIdx }, where a Shot
-// is { prompt, svg, score, chars, token, eligible }. accIdx/brevIdx are the
-// shot indices the player chose for each board (brevIdx may be null).
+// A day's saved record: { shots: Shot[], locked, pickIdx }, where a Shot is
+// { prompt, svg, score, chars, token, eligible }. pickIdx is the one shot the
+// player chose to submit.
 const SHOTS_MAX = 3;
 let FLOOR = 80; // brevity match floor, synced from the leaderboard payload
 let dayShots = []; // shots painted for the current day
 let dayLocked = false; // submitted/finalized for the current day
-let accPickIdx = null; // chosen shot index for the accuracy board
-let brevPickIdx = null; // chosen shot index for the brevity board
+let pickIdx = null; // chosen shot index to submit
 
 const saveKey = (date) => `dp:v3:${date}`;
 const legacyKey = (date) => `dp:v2:${date}`;
@@ -180,8 +179,7 @@ function getAttempt(date) {
       return {
         shots: [{ prompt: v2.prompt, svg: v2.svg, score: v2.score, chars: v2.chars, token: null, eligible: false }],
         locked: true,
-        accIdx: 0,
-        brevIdx: v2.score >= FLOOR ? 0 : null,
+        pickIdx: 0,
       };
     }
   } catch {
@@ -193,27 +191,18 @@ const saveAttempt = (date, a) =>
   localStorage.setItem(saveKey(date), JSON.stringify(a));
 function persistDay() {
   if (!current) return;
-  saveAttempt(current.date, { shots: dayShots, locked: dayLocked, accIdx: accPickIdx, brevIdx: brevPickIdx });
+  saveAttempt(current.date, { shots: dayShots, locked: dayLocked, pickIdx });
 }
 
-// Defaults the picker lands on: best accuracy = highest score (ties to fewer
-// chars); best brevity = fewest chars among shots that cleared the floor.
-function defaultAccIdx(shots) {
+// The shot pre-selected for the player: highest score, ties to fewer chars.
+// They can change it before locking.
+function defaultPick(shots) {
   if (!shots.length) return null;
   let best = 0;
   for (let i = 1; i < shots.length; i++) {
     const s = shots[i], b = shots[best];
     if (s.score > b.score || (s.score === b.score && s.chars < b.chars)) best = i;
   }
-  return best;
-}
-function defaultBrevIdx(shots) {
-  let best = null;
-  shots.forEach((s, i) => {
-    if (s.score < FLOOR) return;
-    if (best === null || s.chars < shots[best].chars || (s.chars === shots[best].chars && s.score > shots[best].score))
-      best = i;
-  });
   return best;
 }
 
@@ -257,26 +246,41 @@ function updateShotControls() {
   refreshPrompt(); // re-evaluate the banned-word lock on the live prompt
 }
 
-// Which board(s) a given shot index is currently assigned to.
-function pickLabel(i) {
-  const isAcc = i === accPickIdx, isBrev = i === brevPickIdx;
-  if (isAcc && isBrev) return { cls: "both", txt: "◎ ✂ both boards" };
-  if (isAcc) return { cls: "acc", txt: "◎ accuracy" };
-  if (isBrev) return { cls: "brev", txt: "✂ brevity" };
-  return { cls: "none", txt: "not sent" };
+// Choose which shot to submit. No-op once locked.
+function selectShot(i) {
+  if (dayLocked || i < 0 || i >= dayShots.length) return;
+  pickIdx = i;
+  persistDay();
+  renderShots();
+  renderSubmitPanel();
 }
 
-// The shots tray: one card/row per painted shot, marked with its board pick.
+// The shots tray: one selectable card/row per painted shot. The chosen shot is
+// highlighted; after locking, only the submitted shot keeps the mark.
 function renderShots() {
   const tray = $("shotsTray");
   if (!dayShots.length) { tray.hidden = true; return; }
   tray.hidden = false;
+  const hint = $("shotsHint");
+  if (hint) hint.textContent = dayLocked ? "" : (dayShots.length > 1 ? "tap the one to submit" : "");
   const list = $("shotList");
   list.innerHTML = "";
+  const selectable = current && current.today && !dayLocked;
   dayShots.forEach((shot, i) => {
-    const pk = pickLabel(i);
-    const el = document.createElement("div");
-    el.className = "shot" + (pk.cls !== "none" ? ` pick-${pk.cls}` : "");
+    const chosen = i === pickIdx;
+    const el = document.createElement(selectable ? "label" : "div");
+    el.className = "shot" + (chosen ? " selected" : "") + (selectable ? " selectable" : "");
+
+    if (selectable) {
+      const radio = document.createElement("input");
+      radio.type = "radio";
+      radio.name = "pickShot";
+      radio.className = "shot-radio";
+      radio.value = String(i);
+      radio.checked = chosen;
+      radio.addEventListener("change", () => selectShot(i));
+      el.appendChild(radio);
+    }
 
     const thumb = document.createElement("div");
     thumb.className = "thumb";
@@ -286,11 +290,12 @@ function renderShots() {
     cv.setAttribute("aria-label", `Shot ${i + 1}: ${shot.score.toFixed(1)} percent match, ${shot.chars} characters`);
     thumb.appendChild(cv);
 
+    const tag = dayLocked && chosen ? `<span class="shot-pick on">✓ submitted</span>`
+      : (!dayLocked && chosen ? `<span class="shot-pick on">✓ submitting this</span>` : "");
     const body = document.createElement("div");
     body.className = "shot-body";
     body.innerHTML =
-      `<div class="shot-top"><span class="shot-n">Shot ${i + 1}</span>` +
-      `<span class="shot-pick ${pk.cls}">${pk.txt}</span></div>` +
+      `<div class="shot-top"><span class="shot-n">Shot ${i + 1}</span>${tag}</div>` +
       `<div class="shot-prompt"></div>` +
       `<div class="shot-nums">` +
         `<span class="acc"><b>${shot.score.toFixed(0)}%</b> <span class="lbl">match</span></span>` +
@@ -305,62 +310,41 @@ function renderShots() {
   });
 }
 
-// The "send to the boards" picker. Today only (past days can't be submitted).
+// The submit button. Today only (past days can't reach the board).
 function renderSubmitPanel() {
   const panel = $("submitPanel");
   if (!current || !current.today || !dayShots.length) { panel.hidden = true; return; }
   panel.hidden = false;
-
-  const accSel = $("accPick");
-  const brevSel = $("brevPick");
-
-  // Accuracy: any shot qualifies.
-  accSel.innerHTML = dayShots.map((s, i) =>
-    `<option value="${i}"${i === accPickIdx ? " selected" : ""}>Shot ${i + 1} · ${s.score.toFixed(0)}%</option>`).join("");
-
-  // Brevity: only shots that cleared the floor.
-  $("brevFloorNote").textContent = `· needs ≥${FLOOR}% match`;
-  const okBrev = dayShots.map((_, i) => i).filter((i) => dayShots[i].score >= FLOOR);
-  if (!okBrev.length) {
-    brevSel.innerHTML = `<option value="">no shot cleared ${FLOOR}%</option>`;
-    brevPickIdx = null;
-  } else {
-    brevSel.innerHTML = okBrev.map((i) =>
-      `<option value="${i}"${i === brevPickIdx ? " selected" : ""}>Shot ${i + 1} · ${dayShots[i].chars} chars</option>`).join("");
-  }
-
-  accSel.disabled = dayLocked;
-  brevSel.disabled = dayLocked || !okBrev.length;
-
-  accSel.onchange = () => { accPickIdx = Number(accSel.value); persistDay(); renderShots(); };
-  brevSel.onchange = () => { brevPickIdx = brevSel.value === "" ? null : Number(brevSel.value); persistDay(); renderShots(); };
-
   const btn = $("lockBtn");
-  btn.disabled = dayLocked;
-  btn.textContent = dayLocked ? "Locked in ✓" : "Lock in my shots";
+  btn.classList.toggle("done", dayLocked);
+  if (dayLocked) {
+    btn.disabled = true;
+    btn.textContent = "Locked in ✓";
+  } else if (pickIdx == null) {
+    btn.disabled = true;
+    btn.textContent = "Pick a shot to submit";
+  } else {
+    btn.disabled = false;
+    btn.textContent = `Submit Shot ${pickIdx + 1}`;
+  }
 }
 
-// Submit the two picks. Either token may be null (e.g. no qualifying brevity
-// shot); the server takes whichever it's given.
+// Submit the chosen shot.
 async function lockIn() {
-  if (!current || !current.today || dayLocked || !dayShots.length) return;
-  const accShot = accPickIdx != null ? dayShots[accPickIdx] : null;
-  const brevShot = brevPickIdx != null ? dayShots[brevPickIdx] : null;
-  const accToken = accShot && accShot.eligible ? accShot.token : null;
-  const brevToken = brevShot && brevShot.eligible ? brevShot.token : null;
-
+  if (!current || !current.today || dayLocked || pickIdx == null) return;
+  const shot = dayShots[pickIdx];
   const btn = $("lockBtn");
-  // Nothing live to send (tokens expired after an hour idle) — lock locally.
-  if (!accToken && !brevToken) {
-    dayLocked = true; persistDay(); renderSubmitPanel(); renderShots(); updateShotControls();
+  // Token expired after an hour idle — lock locally so the UI doesn't stall.
+  if (!shot || !shot.eligible || !shot.token) {
+    dayLocked = true; persistDay(); renderShots(); renderSubmitPanel(); updateShotControls();
     return;
   }
-  btn.disabled = true; btn.textContent = "Locking in…";
+  btn.disabled = true; btn.textContent = "Submitting…";
   try {
     const r = await fetch("/api/leaderboard/submit", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ accToken, brevToken, nickname: getNick(), playerId: getPlayerId() }),
+      body: JSON.stringify({ token: shot.token, nickname: getNick(), playerId: getPlayerId() }),
     });
     const data = await r.json();
     if (!r.ok) throw new Error(data.error || `error ${r.status}`);
@@ -370,12 +354,12 @@ async function lockIn() {
     renderShots();
     renderSubmitPanel();
     updateShotControls();
-    announce("Shots locked in. Your scores are on the board.");
+    announce("Submitted. Your score is on the board.");
   } catch (e) {
-    btn.disabled = false; btn.textContent = "Lock in my shots";
+    btn.disabled = false; btn.textContent = `Submit Shot ${pickIdx + 1}`;
     const note = $("submitPanel").querySelector(".panel-note");
     if (note) note.textContent = e.message;
-    announce(`Couldn't lock in: ${e.message}`);
+    announce(`Couldn't submit: ${e.message}`);
   }
 }
 
@@ -659,11 +643,9 @@ async function loadDay(date) {
   const prior = getAttempt(current.date);
   dayShots = prior && prior.shots ? prior.shots.slice() : [];
   dayLocked = !!(prior && prior.locked);
-  accPickIdx = prior && prior.accIdx != null ? prior.accIdx : defaultAccIdx(dayShots);
-  brevPickIdx = prior && prior.brevIdx !== undefined ? prior.brevIdx : defaultBrevIdx(dayShots);
-  // Guard against stale indices from an older save.
-  if (accPickIdx != null && accPickIdx >= dayShots.length) accPickIdx = defaultAccIdx(dayShots);
-  if (brevPickIdx != null && brevPickIdx >= dayShots.length) brevPickIdx = defaultBrevIdx(dayShots);
+  pickIdx = prior && prior.pickIdx != null ? prior.pickIdx : defaultPick(dayShots);
+  // Guard against a stale index from an older save.
+  if (pickIdx != null && pickIdx >= dayShots.length) pickIdx = defaultPick(dayShots);
 
   $("prompt").value = "";
   $("prompt").placeholder = "e.g. a red circle in the middle on white";
@@ -715,10 +697,8 @@ async function paint() {
       eligible: !!data.eligible,
     };
     dayShots.push(shot);
-    // Re-point the defaults at the best of the shots so far; the player can still
-    // override in the picker before locking.
-    accPickIdx = defaultAccIdx(dayShots);
-    brevPickIdx = defaultBrevIdx(dayShots);
+    // Pre-select the best shot so far; the player can change it before locking.
+    pickIdx = defaultPick(dayShots);
     persistDay();
 
     await showShot(shot);

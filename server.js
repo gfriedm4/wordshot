@@ -154,27 +154,14 @@ const BREVITY_FLOOR = 80;
 
 // playerId is the stable identity (a random id the client keeps in localStorage);
 // nickname is just a display label, so a rename can find and relabel your rows.
-// A row carries two independent submissions so best-of-3 can split boards:
-//   { playerId, nickname, acc: {score, chars, at}, brev: {score, chars, at} | null }
-let leaderboard = {}; // { [date]: Row[] }
+// One submission per player per day: the shot they chose out of their three.
+// Both boards read off that single row (accuracy from score, brevity from chars).
+let leaderboard = {}; // { [date]: [{ playerId, nickname, score, chars, at }] }
 if (existsSync(LB_PATH)) {
   try {
     leaderboard = JSON.parse(await readFile(LB_PATH, "utf8"));
   } catch (e) {
     console.warn(`couldn't read leaderboard: ${e.message}`);
-  }
-}
-// Migrate legacy flat rows ({score,chars,at}) to the per-board shape. An old
-// single-shot score becomes the accuracy entry, and the brevity entry too when
-// it cleared the floor. Idempotent: rows that already have `acc` are skipped.
-for (const rows of Object.values(leaderboard)) {
-  for (const r of rows) {
-    if (r.acc || r.score == null) continue;
-    r.acc = { score: r.score, chars: r.chars, at: r.at };
-    r.brev = r.score >= BREVITY_FLOOR ? { score: r.score, chars: r.chars, at: r.at } : null;
-    delete r.score;
-    delete r.chars;
-    delete r.at;
   }
 }
 let lbWriteQueued = false;
@@ -280,30 +267,28 @@ function cleanNickname(raw) {
     .slice(0, NICK_MAX);
 }
 
-// Each board reads its own per-player entry (`acc` or `brev`), so a player can
-// send one shot to accuracy and a different shot to brevity.
-const toRow = (which, me) => (r) => ({
+const toRow = (me) => (r) => ({
   nickname: r.nickname,
-  score: r[which].score,
-  chars: r[which].chars,
+  score: r.score,
+  chars: r.chars,
   mine: !!me && r.playerId === me,
 });
 
-// Two boards, each off its own submission: accuracy (best match) and brevity
-// (shortest prompt that cleared the floor). `me` flags the requester's own row,
-// by playerId, without leaking anyone else's id. Keyed by day (a date string).
+// Two boards off the same rows: accuracy (best match) and brevity (shortest
+// prompt that cleared the floor). `me` flags the requester's own row, by
+// playerId, without leaking anyone else's id. Keyed by day (a date string).
 function boardsFor(dayKey, me) {
   const rows = leaderboard[dayKey] || [];
   const accuracy = rows
-    .filter((r) => r.acc)
-    .sort((a, b) => b.acc.score - a.acc.score || a.acc.chars - b.acc.chars || a.acc.at - b.acc.at)
+    .slice()
+    .sort((a, b) => b.score - a.score || a.chars - b.chars || a.at - b.at)
     .slice(0, LB_TOP)
-    .map(toRow("acc", me));
+    .map(toRow(me));
   const brevity = rows
-    .filter((r) => r.brev && r.brev.score >= BREVITY_FLOOR)
-    .sort((a, b) => a.brev.chars - b.brev.chars || b.brev.score - a.brev.score || a.brev.at - b.brev.at)
+    .filter((r) => r.score >= BREVITY_FLOOR)
+    .sort((a, b) => a.chars - b.chars || b.score - a.score || a.at - b.at)
     .slice(0, LB_TOP)
-    .map(toRow("brev", me));
+    .map(toRow(me));
   return { accuracy, brevity, floor: BREVITY_FLOOR };
 }
 
@@ -807,8 +792,8 @@ app.get("/api/showcase/:date", async (req, res) => {
   const date = req.params.date;
   if (date === todayStr()) return res.json({ live: true, winners: [] });
   const rows = (leaderboard[date] || [])
-    .filter((r) => r.acc)
-    .sort((a, b) => b.acc.score - a.acc.score || a.acc.chars - b.acc.chars || a.acc.at - b.acc.at)
+    .slice()
+    .sort((a, b) => b.score - a.score || a.chars - b.chars || a.at - b.at)
     .slice(0, 3);
   if (!rows.length) return res.json({ live: false, winners: [] });
   const plays = await bestPlaysByPlayer(date);
@@ -816,8 +801,8 @@ app.get("/api/showcase/:date", async (req, res) => {
     const play = plays.get(r.playerId);
     return {
       nickname: r.nickname,
-      score: r.acc.score,
-      chars: r.acc.chars,
+      score: r.score,
+      chars: r.chars,
       // null when this day predates capture — render the row, just no picture.
       prompt: play?.prompt ?? null,
       svg: play?.svg ?? null,
@@ -826,73 +811,40 @@ app.get("/api/showcase/:date", async (req, res) => {
   res.json({ live: false, winners });
 });
 
-// Redeem score tokens into a leaderboard row, keyed by playerId. Best-of-3 sends
-// two picks: `accToken` (the shot for the accuracy board) and `brevToken` (the
-// shot for the brevity board). Either may be omitted, but at least one is
-// required, and they may be the same token (one shot carrying both boards). Only
-// today's day is eligible; past-day tokens are rejected so practice can't reach
-// the board.
+// Redeem a score token into a leaderboard row, keyed by playerId. The player
+// paints up to three shots and chooses one to submit; this is that one shot's
+// token. Both boards read off the single row. Only today's day is eligible;
+// past-day tokens are rejected so practice can't reach the board.
 app.post("/api/leaderboard/submit", writeLimit, async (req, res) => {
-  const accToken = String(req.body?.accToken || "");
-  const brevToken = String(req.body?.brevToken || "");
+  const token = String(req.body?.token || "");
   const nickname = cleanNickname(req.body?.nickname);
   const playerId = String(req.body?.playerId || "");
   if (!playerId) return res.status(400).json({ error: "playerId required" });
-  if (!accToken && !brevToken)
-    return res.status(400).json({ error: "nothing to submit" });
-
-  const now = Date.now();
-  // Resolve a token to its server-minted score, validating freshness and day.
-  // Returns { ok, scored } or { ok:false, error }. An empty token is a no-op.
-  const resolve = (tok) => {
-    if (!tok) return { ok: true, scored: null };
-    const s = scoreTokens.get(tok);
-    if (!s) return { ok: false, error: "invalid or used token" };
-    if (now > s.exp) {
-      scoreTokens.delete(tok);
-      return { ok: false, error: "that score expired — play it again to submit" };
-    }
-    if (s.date !== todayStr()) {
-      scoreTokens.delete(tok);
-      return { ok: false, error: "past puzzles aren't eligible for the leaderboard" };
-    }
-    return { ok: true, scored: s };
-  };
-  const a = resolve(accToken);
-  if (!a.ok) return res.status(400).json({ error: a.error });
-  const b = resolve(brevToken);
-  if (!b.ok) return res.status(400).json({ error: b.error });
-
-  // The brevity board only takes shots that cleared the match floor.
-  if (b.scored && b.scored.score < BREVITY_FLOOR)
-    return res.status(400).json({ error: `the shortest-prompt board needs at least ${BREVITY_FLOOR}% match` });
-
-  // Gate the nickname (denylist + LLM + uniqueness) before consuming any token,
-  // so a rejected name can be fixed and retried with the same tokens.
+  const scored = scoreTokens.get(token);
+  if (!scored) return res.status(400).json({ error: "invalid or used token" });
+  if (Date.now() > scored.exp) {
+    scoreTokens.delete(token);
+    return res.status(400).json({ error: "that score expired — play it again to submit" });
+  }
+  if (scored.date !== todayStr()) {
+    scoreTokens.delete(token);
+    return res.status(403).json({ error: "past puzzles aren't eligible for the leaderboard" });
+  }
+  // Gate the nickname (denylist + LLM + uniqueness) before consuming the token,
+  // so a rejected name can be fixed and retried with the same token.
   const vet = await vetNickname(nickname, playerId);
   if (!vet.ok) return res.status(400).json({ error: vet.error });
+  scoreTokens.delete(token); // one-time
 
-  // Consume tokens (one-time). Dedup so acc===brev doesn't double-delete.
-  for (const tok of new Set([accToken, brevToken].filter(Boolean))) scoreTokens.delete(tok);
-
-  const date = (a.scored || b.scored).date;
+  const { date, score, chars } = scored;
   const rows = (leaderboard[date] ||= []);
-  let mine = rows.find((r) => r.playerId === playerId);
+  const mine = rows.find((r) => r.playerId === playerId);
+  const better = (s, c) => s > (mine?.score ?? -1) || (s === mine?.score && c < mine.chars);
   if (!mine) {
-    mine = { playerId, nickname, acc: null, brev: null };
-    rows.push(mine);
-  }
-  mine.nickname = nickname; // keep label fresh
-
-  if (a.scored) {
-    const { score, chars } = a.scored;
-    if (!mine.acc || score > mine.acc.score || (score === mine.acc.score && chars < mine.acc.chars))
-      mine.acc = { score, chars, at: now };
-  }
-  if (b.scored) {
-    const { score, chars } = b.scored;
-    if (!mine.brev || chars < mine.brev.chars || (chars === mine.brev.chars && score > mine.brev.score))
-      mine.brev = { score, chars, at: now };
+    rows.push({ playerId, nickname, score, chars, at: Date.now() });
+  } else {
+    mine.nickname = nickname; // keep label fresh
+    if (better(score, chars)) Object.assign(mine, { score, chars, at: Date.now() });
   }
   persistLeaderboard();
   res.json(boardsFor(date, playerId));
