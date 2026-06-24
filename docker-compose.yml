@@ -1,6 +1,6 @@
 # Turnkey self-host: the app + Caddy (automatic HTTPS) on one box.
 #   1. point wordshot.art's A record at this server's public IP
-#   2. put GEMINI_API_KEY in a .env file next to this compose file
+#   2. put GEMINI_API_KEY (and the two UMAMI_* secrets) in a .env file here
 #   3. docker compose up -d --build
 services:
   wordshot:
@@ -12,6 +12,38 @@ services:
       - wordshot-data:/app/data
     expose:
       - "3000"
+
+  # Privacy-friendly analytics, self-hosted. Caddy serves it first-party under
+  # /stats (see Caddyfile) so the tracker is same-origin and the data never
+  # leaves this box. Lightweight: Umami (Node) + its own Postgres, no ClickHouse.
+  umami:
+    image: ghcr.io/umami-software/umami:postgresql-latest
+    restart: unless-stopped
+    environment:
+      - DATABASE_URL=postgresql://umami:${UMAMI_DB_PASSWORD}@umami-db:5432/umami
+      - DATABASE_TYPE=postgresql
+      - APP_SECRET=${UMAMI_APP_SECRET}
+      - BASE_PATH=/stats
+    depends_on:
+      umami-db:
+        condition: service_healthy
+    expose:
+      - "3000"
+
+  umami-db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      - POSTGRES_DB=umami
+      - POSTGRES_USER=umami
+      - POSTGRES_PASSWORD=${UMAMI_DB_PASSWORD}
+    volumes:
+      - umami-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U umami -d umami"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
 
   caddy:
     image: caddy:2
@@ -25,8 +57,10 @@ services:
       - caddy-config:/config
     depends_on:
       - wordshot
+      - umami
 
 volumes:
   wordshot-data:
+  umami-db-data:
   caddy-data:
   caddy-config:
