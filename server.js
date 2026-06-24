@@ -1,7 +1,7 @@
 import express from "express";
 import { readFile, writeFile } from "node:fs/promises";
 import { existsSync, mkdirSync } from "node:fs";
-import { createHash, randomUUID } from "node:crypto";
+import { createHash, randomUUID, timingSafeEqual } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { Resvg } from "@resvg/resvg-js";
@@ -58,6 +58,28 @@ const generateLimits = [
 ];
 // Writes (name set/score submit) are cheap but spammable; looser cap.
 const writeLimit = rateLimit({ windowMs: 60_000, max: Number(process.env.RL_WRITE_PER_MIN) || 40 });
+// The admin endpoint is a single high-entropy token, but an open POST is still
+// worth a tight per-IP cap so it can't be hammered.
+const adminLimit = rateLimit({ windowMs: 60_000, max: 10, message: "forbidden" });
+
+// Global circuit breaker on the paid render path. Per-IP limits stop one client,
+// but nothing stops a swarm of IPs from running up the Gemini bill, so we also
+// cap total paid renders per UTC day across everyone. Cache hits don't count
+// (they cost nothing). When the ceiling trips, generate returns 503 until the
+// day rolls over. Set GEN_GLOBAL_DAILY_MAX=0 to disable.
+const GEN_GLOBAL_DAILY_MAX = process.env.GEN_GLOBAL_DAILY_MAX != null
+  ? Number(process.env.GEN_GLOBAL_DAILY_MAX)
+  : 2000;
+let genDayKey = "";
+let genDayCount = 0;
+// Returns false when the global daily ceiling is already spent. Call right
+// before a paid render; rolls the counter when the UTC day changes.
+function globalRenderBudgetOk() {
+  if (!GEN_GLOBAL_DAILY_MAX) return true; // disabled
+  const key = new Date().toISOString().slice(0, 10);
+  if (key !== genDayKey) { genDayKey = key; genDayCount = 0; }
+  return genDayCount < GEN_GLOBAL_DAILY_MAX;
+}
 
 // Puzzles: the player never sees the SVG source, only the rendered target.
 const puzzles = JSON.parse(
@@ -189,7 +211,13 @@ function claimNickname(nickname, playerId) {
 }
 
 // Tokens minted by /api/generate, redeemed once by /api/leaderboard/submit.
-const scoreTokens = new Map(); // token -> { puzzleId, score, chars, prompt }
+// They carry an expiry so generating-without-submitting can't grow this map
+// unbounded; a stale token is swept on the next mint and rejected on redemption.
+const scoreTokens = new Map(); // token -> { date, score, chars, exp }
+const SCORE_TOKEN_TTL_MS = 60 * 60_000; // 1h: plenty of time to type a nickname
+function sweepScoreTokens(now) {
+  for (const [t, v] of scoreTokens) if (now > v.exp) scoreTokens.delete(t);
+}
 
 function cleanNickname(raw) {
   return String(raw || "")
@@ -262,12 +290,23 @@ function dayList() {
 // The day calendar (today first). Client uses [0] as today's puzzle.
 app.get("/api/days", (_req, res) => res.json({ days: dayList() }));
 
+// A puzzle id is only servable if it's the target for some date at or before
+// today. Without this, /api/target/:id would hand out every future day's answer
+// (ids are sequential 001..NNN), letting anyone pre-solve the whole rotation.
+// Once we're a full cycle past the epoch, every id is reachable anyway.
+function targetPlayable(id) {
+  const limit = Math.min(dayIndex(todayStr()), puzzles.length - 1);
+  for (let i = 0; i <= limit; i++) if (wrap(i).id === id) return true;
+  return false;
+}
+
 // The renderer needs the target image to diff against, so it gets the SVG,
 // but only as a rasterized data source, and the player can't read network tabs
-// mid-game any more than they could screenshot the answer. Good enough for v0.
+// mid-game any more than they could screenshot the answer. Future-day targets
+// are withheld so the leaderboard can't be pre-solved.
 app.get("/api/target/:id", (req, res) => {
   const p = puzzles.find((q) => q.id === req.params.id);
-  if (!p) return res.status(404).json({ error: "no such puzzle" });
+  if (!p || !targetPlayable(p.id)) return res.status(404).json({ error: "no such puzzle" });
   res.type("image/svg+xml").send(p.svg);
 });
 
@@ -671,15 +710,22 @@ app.post("/api/generate", ...generateLimits, async (req, res) => {
   const reply = (svg, score) => {
     const chars = prompt.length;
     const token = randomUUID();
-    scoreTokens.set(token, { date, score, chars });
+    const now = Date.now();
+    sweepScoreTokens(now);
+    scoreTokens.set(token, { date, score, chars, exp: now + SCORE_TOKEN_TTL_MS });
     return res.json({ svg, score, chars, token, eligible });
   };
 
   const key = cacheKey(puzzle.id, prompt);
   const hit = resultCache.get(key);
-  if (hit) return reply(hit.svg, hit.score);
+  if (hit) return reply(hit.svg, hit.score); // cache hit is free, no budget spent
+
+  // Past this point we pay Gemini. Stop here if the global daily ceiling is spent.
+  if (!globalRenderBudgetOk())
+    return res.status(503).json({ error: "the engine's resting — too many paintings today. try again tomorrow" });
 
   try {
+    genDayCount++; // count the paid attempt before the call, so errors still spend
     const svg = await generateSvg(prompt);
     const score = Math.round(scoreMatch(target, rasterize(svg)) * 10) / 10;
     resultCache.set(key, { svg, score });
@@ -715,6 +761,10 @@ app.post("/api/leaderboard/submit", writeLimit, async (req, res) => {
   if (!playerId) return res.status(400).json({ error: "playerId required" });
   const scored = scoreTokens.get(token);
   if (!scored) return res.status(400).json({ error: "invalid or used token" });
+  if (Date.now() > scored.exp) {
+    scoreTokens.delete(token);
+    return res.status(400).json({ error: "that score expired — play it again to submit" });
+  }
   if (scored.date !== todayStr()) {
     scoreTokens.delete(token);
     return res.status(403).json({ error: "past puzzles aren't eligible for the leaderboard" });
@@ -767,10 +817,18 @@ app.post("/api/player/rename", writeLimit, async (req, res) => {
 //     -H "x-admin-token: $ADMIN_TOKEN" -H "content-type: application/json" \
 //     -d '{"date":"2026-06-23","nickname":"ross_test"}'   # one row
 //     -d '{"date":"2026-06-23"}'                            # whole day
-app.post("/api/admin/remove", (req, res) => {
+// Constant-time token check so a wrong guess leaks nothing through timing.
+// Length-prefixed compare avoids timingSafeEqual throwing on mismatched sizes.
+function adminTokenOk(supplied, expected) {
+  const a = Buffer.from(String(supplied || ""));
+  const b = Buffer.from(expected);
+  return a.length === b.length && timingSafeEqual(a, b);
+}
+
+app.post("/api/admin/remove", adminLimit, (req, res) => {
   const token = process.env.ADMIN_TOKEN;
   if (!token) return res.status(503).json({ error: "admin disabled: ADMIN_TOKEN not set" });
-  if (req.get("x-admin-token") !== token)
+  if (!adminTokenOk(req.get("x-admin-token"), token))
     return res.status(403).json({ error: "forbidden" });
 
   const date = String(req.body?.date || "");
